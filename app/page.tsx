@@ -19,30 +19,29 @@ function Home() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col">
+    <div className="relative flex min-h-dvh flex-col bg-canvas">
       {/* ヘッダー */}
-      <header className="sticky top-0 z-30 bg-canvas/95 backdrop-blur">
-        <div className="flex items-center px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
+      <header className="sticky top-0 z-30 bg-canvas border-b border-line">
+        <div className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
           <h1 className="text-[20px] font-bold tracking-tight text-ink">
             {screen === "cases" ? "症例" : "知識"}
           </h1>
         </div>
-        <div className="h-px bg-line" />
       </header>
 
       {/* エラーバナー */}
       {error && (
-        <div className="mx-3 mt-3 flex items-center justify-between rounded-xl border border-danger/30 bg-red-50 px-3 py-2 text-[13px] text-danger">
+        <div className="mx-3 mt-2 flex items-center justify-between rounded-xl border border-danger/30 bg-red-50 px-3 py-2 text-[13px] text-danger">
           <span>{error}</span>
-          <button onClick={() => void reload()} className="font-semibold underline">
-            再読み込み
-          </button>
+          <button onClick={() => void reload()} className="font-semibold underline">再読み込み</button>
         </div>
       )}
 
       {/* 画面本体 */}
-      <main className="flex-1 overflow-y-auto pt-2 pb-[calc(env(safe-area-inset-bottom)+4rem)]">
-        {screen === "cases" ? <CasesScreen /> : <KnowledgeScreen />}
+      <main className="flex-1 overflow-y-auto">
+        <div className="pb-[calc(env(safe-area-inset-bottom)+4.5rem)]">
+          {screen === "cases" ? <CasesScreen /> : <KnowledgeScreen />}
+        </div>
       </main>
 
       {/* 下部ナビ */}
