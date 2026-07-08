@@ -1,63 +1,127 @@
 "use client";
 
-import { useApp } from "@/lib/store";
+import { useState } from "react";
+import type { CardFilter, SortKey, ViewMode } from "@/lib/types";
+import { SORT_LABELS } from "@/lib/types";
 import { Icon } from "./Icon";
 
-/**
- * 画面上部のタブバー。横スクロール対応。
- * activeTabId が null のときは検索 (全タブ) モード。
- */
-export function TabBar({
-  activeTabId,
-  onSelect,
-  onOpenManager,
-  cardCounts,
+export function Toolbar({
+  query,
+  onQueryChange,
+  sortKey,
+  onSortChange,
+  filter,
+  onFilterChange,
+  view,
+  onViewChange,
+  availableTags,
+  compact = false,
 }: {
-  activeTabId: string | null;
-  onSelect: (id: string) => void;
-  onOpenManager: () => void;
-  cardCounts: Map<string, number>;
+  query: string;
+  onQueryChange: (q: string) => void;
+  sortKey: SortKey;
+  onSortChange: (k: SortKey) => void;
+  filter: CardFilter;
+  onFilterChange: (f: CardFilter) => void;
+  view: ViewMode;
+  onViewChange: (v: ViewMode) => void;
+  availableTags: string[];
+  compact?: boolean;
 }) {
-  const { tabs } = useApp();
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  const filterActive =
+    filter.completion !== "all" || filter.pinnedOnly || filter.tag !== null;
+
+  const chip = (active: boolean) =>
+    `rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
+      active
+        ? "bg-accent text-white"
+        : "border border-line bg-surface text-ink-secondary hover:text-ink"
+    }`;
 
   return (
-    <div className="flex items-center gap-2 px-3 pb-2">
-      <nav
-        className="scrollbar-none flex flex-1 gap-1.5 overflow-x-auto"
-        aria-label="タブ"
-      >
-        {tabs.map((tab) => {
-          const active = tab.id === activeTabId;
-          const count = cardCounts.get(tab.id) ?? 0;
-          return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="flex h-10 flex-1 items-center gap-2 rounded-xl bg-surface border border-line px-3">
+          <Icon name="search" size={16} className="shrink-0 text-ink-tertiary" />
+          <input
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="全タブから検索 (タイトル・症状・部位など)"
+            className="h-full flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-tertiary"
+            type="search"
+          />
+          {query && (
+            <button onClick={() => onQueryChange("")} aria-label="検索をクリア">
+              <Icon name="close" size={14} className="text-ink-tertiary" />
+            </button>
+          )}
+        </div>
+
+        {!compact && (
+          <>
             <button
-              key={tab.id}
-              onClick={() => onSelect(tab.id)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[14px] font-medium transition-colors ${
-                active
-                  ? "bg-ink text-white"
-                  : "bg-surface text-ink-secondary border border-line hover:text-ink"
+              onClick={() => setPanelOpen((v) => !v)}
+              aria-label="並び替えとフィルター"
+              className={`relative flex h-10 w-10 items-center justify-center rounded-xl border ${
+                panelOpen || filterActive
+                  ? "border-accent bg-accent-soft text-accent"
+                  : "border-line bg-surface text-ink-secondary"
               }`}
             >
-              {tab.name}
-              {count > 0 && (
-                <span
-                  className={`text-[12px] ${active ? "text-white/70" : "text-ink-tertiary"}`}
-                >
-                  {count}
-                </span>
+              <Icon name="filter" size={17} />
+              {filterActive && (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-accent" />
               )}
             </button>
-          );
-        })}
-      </nav>
-      <button
-        onClick={onOpenManager}
-        aria-label="タブを管理"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-secondary hover:text-ink"
-      >
-        <Icon name="settings" size={16} />
-      </button>
+
+            <button
+              onClick={() => onViewChange(view === "list" ? "grid" : "list")}
+              aria-label="表示切替"
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-ink-secondary"
+            >
+              <Icon name={view === "list" ? "grid" : "list"} size={17} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {panelOpen && !compact && (
+        <div className="space-y-3 rounded-xl border border-line bg-surface p-3">
+          <div>
+            <p className="mb-1.5 text-[12px] font-medium text-ink-tertiary">並び替え</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                <button key={key} onClick={() => onSortChange(key)} className={chip(sortKey === key)}>
+                  {SORT_LABELS[key]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-[12px] font-medium text-ink-tertiary">状態</p>
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => onFilterChange({ ...filter, completion: "all" })} className={chip(filter.completion === "all")}>すべて</button>
+              <button onClick={() => onFilterChange({ ...filter, completion: "todo" })} className={chip(filter.completion === "todo")}>未完了</button>
+              <button onClick={() => onFilterChange({ ...filter, completion: "done" })} className={chip(filter.completion === "done")}>完了</button>
+              <button onClick={() => onFilterChange({ ...filter, pinnedOnly: !filter.pinnedOnly })} className={chip(filter.pinnedOnly)}>ピン留めのみ</button>
+            </div>
+          </div>
+          {availableTags.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-[12px] font-medium text-ink-tertiary">タグ</p>
+              <div className="flex flex-wrap gap-1.5">
+                {availableTags.map((tag) => (
+                  <button key={tag} onClick={() => onFilterChange({ ...filter, tag: filter.tag === tag ? null : tag })} className={chip(filter.tag === tag)}>
+                    #{tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
