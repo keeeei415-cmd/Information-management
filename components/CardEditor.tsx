@@ -142,14 +142,19 @@ export function CardEditor({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelClass} htmlFor="rec-age">年齢</label>
-            <input
+            <select
               id="rec-age"
               value={clinical.age}
               onChange={(e) => set("age", e.target.value)}
-              placeholder="例: 52"
-              inputMode="numeric"
-              className={fieldClass}
-            />
+              className={`${fieldClass} appearance-none`}
+            >
+              <option value="">選択</option>
+              {Array.from({ length: 101 }, (_, i) => (
+                <option key={i} value={String(i)}>
+                  {i}歳
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={labelClass}>性別</label>

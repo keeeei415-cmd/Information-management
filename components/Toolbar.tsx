@@ -19,6 +19,7 @@ export function Toolbar({
   view,
   onViewChange,
   availableTags,
+  compact = false,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -29,6 +30,8 @@ export function Toolbar({
   view: ViewMode;
   onViewChange: (v: ViewMode) => void;
   availableTags: string[];
+  /** true のとき検索欄のみ表示 (知識タブ用) */
+  compact?: boolean;
 }) {
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -67,6 +70,8 @@ export function Toolbar({
           aria-label="並び替えとフィルター"
           aria-expanded={panelOpen}
           className={`relative flex h-10 w-10 items-center justify-center rounded-xl border ${
+            compact ? "hidden" : ""
+          } ${
             panelOpen || filterActive
               ? "border-accent bg-accent-soft text-accent"
               : "border-line bg-surface text-ink-secondary"
@@ -81,14 +86,16 @@ export function Toolbar({
         <button
           onClick={() => onViewChange(view === "list" ? "grid" : "list")}
           aria-label={view === "list" ? "カード表示に切り替え" : "リスト表示に切り替え"}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-ink-secondary"
+          className={`flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface text-ink-secondary ${
+            compact ? "hidden" : ""
+          }`}
         >
           <Icon name={view === "list" ? "grid" : "list"} size={17} />
         </button>
       </div>
 
       {/* 並び替え・フィルターパネル */}
-      {panelOpen && (
+      {panelOpen && !compact && (
         <div className="space-y-3 rounded-xl border border-line bg-surface p-3">
           <div>
             <p className="mb-1.5 text-[12px] font-medium text-ink-tertiary">並び替え</p>

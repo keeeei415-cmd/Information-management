@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CardBoard } from "@/components/CardBoard";
 import { CardEditor } from "@/components/CardEditor";
 import { Icon } from "@/components/Icon";
+import { KnowledgeBoard } from "@/components/KnowledgeBoard";
 import { TabBar } from "@/components/TabBar";
 import { TabManager } from "@/components/TabManager";
 import { Toolbar } from "@/components/Toolbar";
@@ -46,6 +47,10 @@ function Home() {
 
   const availableTags = useMemo(() => collectTags(cards), [cards]);
 
+  // アクティブなタブが「知識」(アウトライン形式) かどうかを名前で判定する
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const isKnowledgeTab = activeTab?.name === "知識";
+
   if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center text-[14px] text-ink-tertiary">
@@ -71,6 +76,7 @@ function Home() {
           view={view}
           onViewChange={setView}
           availableTags={availableTags}
+          compact={isKnowledgeTab}
         />
         <div className="mt-2">
           <TabBar
@@ -113,6 +119,8 @@ function Home() {
               タブを作成
             </button>
           </div>
+        ) : isKnowledgeTab && activeTabId ? (
+          <KnowledgeBoard tabId={activeTabId} query={query} />
         ) : (
           <CardBoard
             activeTabId={activeTabId}
@@ -125,8 +133,8 @@ function Home() {
         )}
       </main>
 
-      {/* カード追加 FAB */}
-      {activeTabId && (
+      {/* カード追加 FAB (症例タブのみ。知識タブは独自の追加UIを持つ) */}
+      {activeTabId && !isKnowledgeTab && (
         <button
           onClick={() => setCreating(true)}
           aria-label="カードを追加"

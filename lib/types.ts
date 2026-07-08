@@ -47,7 +47,15 @@ export type CardInput = Pick<Card, "tab_id" | "title"> &
   Partial<
     Pick<
       Card,
-      "content" | "category" | "tags" | "pinned" | "completed" | "color" | "due_date" | "position"
+      | "content"
+      | "category"
+      | "tags"
+      | "pinned"
+      | "completed"
+      | "color"
+      | "due_date"
+      | "position"
+      | "metadata"
     >
   >;
 

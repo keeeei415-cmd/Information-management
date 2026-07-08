@@ -17,6 +17,9 @@ const PATHS: Record<string, string> = {
   calendar: "M5 5h14v15H5zM5 9.5h14M9 3v4M15 3v4",
   tag: "M3 3h8l10 10-8 8L3 11V3zM7.5 7.5h.01",
   settings: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z",
+  chevronRight: "M9 6l6 6-6 6",
+  chevronDown: "M6 9l6 6 6-6",
+  dot: "M12 12h.01",
 };
 
 export function Icon({
