@@ -81,3 +81,54 @@ export const SORT_LABELS: Record<SortKey, string> = {
   due: "期限",
   manual: "手動",
 };
+
+// ---- 症例記録 (metadata に保存する臨床データ) ----
+
+export type Gender = "男性" | "女性" | "その他" | "";
+
+/** カードの metadata.clinical に保存する症例データ */
+export interface ClinicalData {
+  age: string; // 年齢 (自由入力)
+  gender: Gender; // 性別
+  symptom: string; // 症状
+  assessment: string; // 評価
+  consideration: string; // 考察
+  treatment: string; // 治療内容
+  result: string; // 結果
+}
+
+export const EMPTY_CLINICAL: ClinicalData = {
+  age: "",
+  gender: "",
+  symptom: "",
+  assessment: "",
+  consideration: "",
+  treatment: "",
+  result: "",
+};
+
+/** カードから症例データを安全に取り出す */
+export function getClinical(card: Card): ClinicalData {
+  const raw = (card.metadata as { clinical?: Partial<ClinicalData> })?.clinical ?? {};
+  return { ...EMPTY_CLINICAL, ...raw };
+}
+
+/** 部位タグの選択肢 */
+export const BODY_PARTS = [
+  "頚部",
+  "肩",
+  "上腕",
+  "肘",
+  "前腕",
+  "手首",
+  "手指",
+  "背部",
+  "腰部",
+  "股関節",
+  "臀部",
+  "大腿部",
+  "膝",
+  "下腿部",
+  "足関節",
+  "足指",
+] as const;

@@ -2,7 +2,7 @@
 
 import { CARD_COLORS } from "@/lib/colors";
 import { useApp } from "@/lib/store";
-import type { Card, ViewMode } from "@/lib/types";
+import { getClinical, type Card, type ViewMode } from "@/lib/types";
 import { dueStatus, formatDate } from "@/lib/utils";
 import { Icon } from "./Icon";
 
@@ -43,6 +43,11 @@ export function CardItem({
 }) {
   const { patchCard } = useApp();
   const palette = CARD_COLORS[card.color] ?? CARD_COLORS.default;
+  const clinical = getClinical(card);
+  const patient = [clinical.age && `${clinical.age}歳`, clinical.gender]
+    .filter(Boolean)
+    .join("・");
+  const preview = clinical.symptom || card.content;
 
   const toggleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -105,13 +110,13 @@ export function CardItem({
             </button>
           </div>
 
-          {card.content && (
+          {preview && (
             <p
               className={`mt-1 whitespace-pre-line text-[13px] leading-relaxed text-ink-secondary ${
                 view === "grid" ? "line-clamp-4" : "line-clamp-2"
               }`}
             >
-              {card.content}
+              {preview}
             </p>
           )}
 
@@ -119,6 +124,11 @@ export function CardItem({
             {tabName && (
               <span className="rounded-md bg-ink/5 px-1.5 py-0.5 text-[11px] font-medium text-ink-secondary">
                 {tabName}
+              </span>
+            )}
+            {patient && (
+              <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">
+                {patient}
               </span>
             )}
             {card.category && (

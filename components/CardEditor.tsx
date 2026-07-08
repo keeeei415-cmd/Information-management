@@ -3,19 +3,28 @@
 import { useState } from "react";
 import { CARD_COLORS, CARD_COLOR_KEYS } from "@/lib/colors";
 import { useApp } from "@/lib/store";
-import type { Card, CardColor } from "@/lib/types";
-import { collectTags, toDateInputValue } from "@/lib/utils";
+import {
+  BODY_PARTS,
+  EMPTY_CLINICAL,
+  getClinical,
+  type Card,
+  type CardColor,
+  type ClinicalData,
+  type Gender,
+} from "@/lib/types";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
-import { TagInput } from "./TagInput";
 
 const labelClass = "mb-1.5 block text-[13px] font-medium text-ink-secondary";
 const fieldClass =
   "w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-[15px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent";
 
+const GENDERS: Gender[] = ["男性", "女性", "その他"];
+
 /**
- * カードの作成・編集モーダル。
- * card を渡すと編集、渡さなければ tabId のタブに新規作成する。
+ * 症例記録の作成・編集モーダル。
+ * 臨床データ (症状・評価・考察・治療内容・結果など) は card.metadata.clinical に保存する。
+ * メモは card.content に保存する。
  */
 export function CardEditor({
   card,
@@ -26,15 +35,24 @@ export function CardEditor({
   tabId: string;
   onClose: () => void;
 }) {
-  const { cards, addCard, patchCard, removeCard } = useApp();
+  const { addCard, patchCard, removeCard } = useApp();
+
+  const initial: ClinicalData = card ? getClinical(card) : EMPTY_CLINICAL;
 
   const [title, setTitle] = useState(card?.title ?? "");
-  const [content, setContent] = useState(card?.content ?? "");
-  const [category, setCategory] = useState(card?.category ?? "");
+  const [clinical, setClinical] = useState<ClinicalData>(initial);
+  const [memo, setMemo] = useState(card?.content ?? "");
   const [tags, setTags] = useState<string[]>(card?.tags ?? []);
   const [color, setColor] = useState<CardColor>(card?.color ?? "default");
-  const [dueDate, setDueDate] = useState(toDateInputValue(card?.due_date ?? null));
   const [saving, setSaving] = useState(false);
+
+  const set = (key: keyof ClinicalData, value: string) =>
+    setClinical((prev) => ({ ...prev, [key]: value }));
+
+  const toggleTag = (part: string) =>
+    setTags((prev) =>
+      prev.includes(part) ? prev.filter((t) => t !== part) : [...prev, part]
+    );
 
   const canSave = title.trim().length > 0 && !saving;
 
@@ -43,11 +61,10 @@ export function CardEditor({
     setSaving(true);
     const payload = {
       title: title.trim(),
-      content,
-      category: category.trim() || null,
+      content: memo,
       tags,
       color,
-      due_date: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
+      metadata: { clinical },
     };
     if (card) {
       await patchCard(card.id, payload);
@@ -59,14 +76,23 @@ export function CardEditor({
 
   const remove = async () => {
     if (!card) return;
-    if (!window.confirm("このカードを削除しますか?")) return;
+    if (!window.confirm("この記録を削除しますか?")) return;
     await removeCard(card.id);
     onClose();
   };
 
+  /** テキストエリア項目の定義 (順番どおりに表示) */
+  const textAreas: { key: keyof ClinicalData; label: string; rows: number }[] = [
+    { key: "symptom", label: "症状", rows: 3 },
+    { key: "assessment", label: "評価", rows: 3 },
+    { key: "consideration", label: "考察", rows: 3 },
+    { key: "treatment", label: "治療内容", rows: 3 },
+    { key: "result", label: "結果", rows: 3 },
+  ];
+
   return (
     <Modal
-      title={card ? "カードを編集" : "新しいカード"}
+      title={card ? "記録を編集" : "新しい記録"}
       onClose={onClose}
       footer={
         <div className="flex items-center gap-2">
@@ -74,7 +100,7 @@ export function CardEditor({
             <button
               onClick={remove}
               className="flex h-11 w-11 items-center justify-center rounded-xl text-danger hover:bg-red-50"
-              aria-label="カードを削除"
+              aria-label="記録を削除"
             >
               <Icon name="trash" size={20} />
             </button>
@@ -97,55 +123,96 @@ export function CardEditor({
     >
       <div className="space-y-4">
         <div>
-          <label className={labelClass} htmlFor="card-title">タイトル</label>
+          <label className={labelClass} htmlFor="rec-title">
+            タイトル <span className="text-danger">*</span>
+          </label>
           <input
-            id="card-title"
+            id="rec-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="タイトルを入力"
+            placeholder="例: 50代 慢性腰痛 3回目"
             autoFocus
             className={fieldClass}
           />
-        </div>
-
-        <div>
-          <label className={labelClass} htmlFor="card-content">内容</label>
-          <textarea
-            id="card-content"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="メモ・詳細など"
-            rows={5}
-            className={`${fieldClass} resize-y`}
-          />
+          <p className="mt-1 text-[11px] text-ink-tertiary">
+            個人情報 (氏名など) は入力しないでください
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass} htmlFor="card-category">カテゴリ (任意)</label>
+            <label className={labelClass} htmlFor="rec-age">年齢</label>
             <input
-              id="card-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="例: 買い物"
+              id="rec-age"
+              value={clinical.age}
+              onChange={(e) => set("age", e.target.value)}
+              placeholder="例: 52"
+              inputMode="numeric"
               className={fieldClass}
             />
           </div>
           <div>
-            <label className={labelClass} htmlFor="card-due">期限 (任意)</label>
-            <input
-              id="card-due"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className={fieldClass}
-            />
+            <label className={labelClass}>性別</label>
+            <div className="flex gap-1.5">
+              {GENDERS.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => set("gender", clinical.gender === g ? "" : g)}
+                  className={`h-[46px] flex-1 rounded-xl border text-[13px] font-medium transition-colors ${
+                    clinical.gender === g
+                      ? "border-accent bg-accent text-white"
+                      : "border-line bg-canvas text-ink-secondary"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>タグ</label>
-          <TagInput tags={tags} onChange={setTags} suggestions={collectTags(cards)} />
+          <label className={labelClass}>部位 (複数選択可)</label>
+          <div className="flex flex-wrap gap-1.5">
+            {BODY_PARTS.map((part) => (
+              <button
+                key={part}
+                onClick={() => toggleTag(part)}
+                className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                  tags.includes(part)
+                    ? "bg-accent text-white"
+                    : "border border-line bg-canvas text-ink-secondary"
+                }`}
+              >
+                {part}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {textAreas.map(({ key, label, rows }) => (
+          <div key={key}>
+            <label className={labelClass} htmlFor={`rec-${key}`}>{label}</label>
+            <textarea
+              id={`rec-${key}`}
+              value={clinical[key]}
+              onChange={(e) => set(key, e.target.value)}
+              rows={rows}
+              className={`${fieldClass} resize-y`}
+            />
+          </div>
+        ))}
+
+        <div>
+          <label className={labelClass} htmlFor="rec-memo">メモ</label>
+          <textarea
+            id="rec-memo"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="その他気づいたことなど"
+            rows={3}
+            className={`${fieldClass} resize-y`}
+          />
         </div>
 
         <div>

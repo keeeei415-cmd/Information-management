@@ -51,7 +51,7 @@ export function Toolbar({
           <input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="全タブから検索 (タイトル・内容・タグ)"
+            placeholder="全タブから検索 (タイトル・症状・部位など)"
             className="h-full flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-tertiary"
             type="search"
           />

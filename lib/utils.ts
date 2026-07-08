@@ -1,4 +1,4 @@
-import type { Card, CardFilter, SortKey } from "./types";
+import { getClinical, type Card, type CardFilter, type SortKey } from "./types";
 
 /** "2026/7/4" のような短い日付表示 */
 export function formatDate(iso: string | null): string {
@@ -29,16 +29,26 @@ export function toDateInputValue(iso: string | null): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-/** 検索: タイトル・内容・タグを対象に部分一致 (大文字小文字を区別しない) */
+/** 検索: タイトル・メモ・部位タグ・症例内容 (症状/評価/考察/治療/結果) を対象に部分一致 */
 export function matchesQuery(card: Card, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return (
-    card.title.toLowerCase().includes(q) ||
-    card.content.toLowerCase().includes(q) ||
-    card.tags.some((t) => t.toLowerCase().includes(q)) ||
-    (card.category ?? "").toLowerCase().includes(q)
-  );
+  const c = getClinical(card);
+  const haystack = [
+    card.title,
+    card.content,
+    card.category ?? "",
+    c.symptom,
+    c.assessment,
+    c.consideration,
+    c.treatment,
+    c.result,
+    c.age,
+    c.gender,
+  ]
+    .join("\n")
+    .toLowerCase();
+  return haystack.includes(q) || card.tags.some((t) => t.toLowerCase().includes(q));
 }
 
 export function matchesFilter(card: Card, filter: CardFilter): boolean {

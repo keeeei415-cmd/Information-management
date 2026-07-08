@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ボード | 情報管理",
-  description: "タブとカードで何でも管理できる情報管理アプリ",
+  title: "症例記録",
+  description: "治療内容を記録・検索できる症例記録アプリ",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "ボード",
+    title: "症例記録",
   },
 };
 

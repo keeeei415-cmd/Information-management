@@ -59,7 +59,7 @@ function Home() {
       {/* ヘッダー */}
       <header className="sticky top-0 z-30 bg-canvas/90 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
         <div className="flex items-center justify-between px-4 pb-2">
-          <h1 className="text-[22px] font-bold tracking-tight text-ink">ボード</h1>
+          <h1 className="text-[22px] font-bold tracking-tight text-ink">症例記録</h1>
         </div>
         <Toolbar
           query={query}
@@ -102,9 +102,9 @@ function Home() {
           <div className="flex flex-col items-center gap-3 px-6 py-24 text-center">
             <p className="text-[16px] font-semibold text-ink">はじめにタブを作成しましょう</p>
             <p className="text-[13px] leading-relaxed text-ink-tertiary">
-              ToDo・メモ・仕事・投資など、用途ごとにタブを作って
+              「腰痛」「肩」「勉強会」など、分類ごとにタブを作って
               <br />
-              カードで情報を管理できます。
+              治療記録を保存・検索できます。
             </p>
             <button
               onClick={() => setTabManagerOpen(true)}

@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 /** PWA マニフェスト。ホーム画面追加でスタンドアロン起動できる */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "ボード - 情報管理",
-    short_name: "ボード",
-    description: "タブとカードで何でも管理できる情報管理アプリ",
+    name: "症例記録",
+    short_name: "症例記録",
+    description: "治療内容を記録・検索できる症例記録アプリ",
     start_url: "/",
     display: "standalone",
     background_color: "#F2F2F7",
