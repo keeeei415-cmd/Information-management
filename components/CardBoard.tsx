@@ -7,11 +7,6 @@ import { matchesFilter, matchesQuery, sortCards } from "@/lib/utils";
 import { CardItem } from "./CardItem";
 import { Icon } from "./Icon";
 
-/**
- * カードの一覧表示。
- * 検索クエリがある場合は全タブを対象、なければ選択中タブのみを表示する。
- * 絞り込み・並び替えのロジックは lib/utils.ts の純関数に委譲している。
- */
 export function CardBoard({
   activeTabId,
   query,
@@ -19,6 +14,7 @@ export function CardBoard({
   sortKey,
   view,
   onEditCard,
+  screenFilter,
 }: {
   activeTabId: string | null;
   query: string;
@@ -26,19 +22,39 @@ export function CardBoard({
   sortKey: SortKey;
   view: ViewMode;
   onEditCard: (card: Card) => void;
+  /** "cases" = 知識タブを除外して症例のみ表示 */
+  screenFilter?: "cases";
 }) {
   const { tabs, cards, moveCard } = useApp();
   const searching = query.trim().length > 0;
 
   const tabNames = useMemo(() => new Map(tabs.map((t) => [t.id, t.name])), [tabs]);
 
+  // 知識タブのIDセット（除外用）
+  const knowledgeTabIds = useMemo(
+    () => new Set(tabs.filter((t) => t.name === "知識").map((t) => t.id)),
+    [tabs]
+  );
+
   const visible = useMemo(() => {
-    const scoped = searching ? cards : cards.filter((c) => c.tab_id === activeTabId);
+    let scoped = activeTabId
+      ? cards.filter((c) => c.tab_id === activeTabId)
+      : cards;
+
+    // 症例画面では知識タブのカードを除外
+    if (screenFilter === "cases") {
+      scoped = scoped.filter((c) => !knowledgeTabIds.has(c.tab_id));
+    }
+
+    if (!searching && !activeTabId && screenFilter !== "cases") {
+      scoped = cards;
+    }
+
     const filtered = scoped.filter(
       (c) => matchesQuery(c, query) && matchesFilter(c, filter)
     );
     return sortCards(filtered, sortKey);
-  }, [cards, activeTabId, searching, query, filter, sortKey]);
+  }, [cards, activeTabId, searching, query, filter, sortKey, screenFilter, knowledgeTabIds]);
 
   if (visible.length === 0) {
     return (
