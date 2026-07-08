@@ -15,7 +15,6 @@ import {
 import { BODY_PARTS, type Card } from "@/lib/types";
 import { Icon } from "./Icon";
 import { OutlineRow } from "./OutlineRow";
-
 /**
  * 「知識」タブの本体。
  * 1枚のカード = 1つの「部位」。カードの metadata.outline に階層メモを持つ。
@@ -30,9 +29,7 @@ export function KnowledgeBoard({
 }) {
   const { cards, addCard, patchCard, removeCard } = useApp();
 
-  // どの部位カードを開いているか (id の集合)
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
-  const [adding, setAdding] = useState(false);
 
   const partCards = useMemo(
     () => cards.filter((c) => c.tab_id === tabId),
@@ -161,37 +158,25 @@ export function KnowledgeBoard({
       {/* 部位の追加 */}
       {!searching && (
         <div className="mt-3">
-          {adding ? (
-            <div className="rounded-card border border-line bg-surface p-3">
-              <p className="mb-2 text-[13px] font-medium text-ink-secondary">追加する部位を選択</p>
-              <div className="flex flex-wrap gap-1.5">
-                {remainingParts.length === 0 && (
-                  <span className="text-[13px] text-ink-tertiary">すべての部位が追加済みです</span>
-                )}
-                {remainingParts.map((part) => (
-                  <button
-                    key={part}
-                    onClick={() => void addPart(part)}
-                    className="rounded-full border border-line bg-canvas px-3 py-1.5 text-[13px] font-medium text-ink-secondary hover:border-accent hover:text-accent"
-                  >
-                    {part}
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={() => setAdding(false)}
-                className="mt-3 text-[13px] text-ink-tertiary underline"
-              >
-                閉じる
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setAdding(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-card border border-dashed border-line bg-surface py-3 text-[14px] font-medium text-ink-secondary hover:border-accent hover:text-accent"
+          {remainingParts.length > 0 ? (
+            <select
+              value=""
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val) void addPart(val);
+                e.target.value = "";
+              }}
+              className="w-full appearance-none rounded-card border border-dashed border-line bg-surface px-4 py-3 text-[14px] font-medium text-ink-secondary hover:border-accent hover:text-accent focus:outline-none"
             >
-              <Icon name="plus" size={18} /> 部位を追加
-            </button>
+              <option value="">＋ 部位を追加…</option>
+              {remainingParts.map((part) => (
+                <option key={part} value={part}>{part}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="py-2 text-center text-[13px] text-ink-tertiary">
+              すべての部位が追加済みです
+            </p>
           )}
         </div>
       )}

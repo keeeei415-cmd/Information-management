@@ -4,11 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { OutlineNode } from "@/lib/outline";
 import { Icon } from "./Icon";
 
-/**
- * アウトラインの1行を描画する再帰コンポーネント。
- * 子ノードがあればトグルで開閉、なければ箇条書きの「・」を表示する。
- * 操作 (編集・子追加・移動・削除) はすべて親から渡された関数を呼ぶだけ。
- */
 export function OutlineRow({
   node,
   depth,
@@ -34,22 +29,37 @@ export function OutlineRow({
 }) {
   const hasChildren = node.children.length > 0;
   const [editing, setEditing] = useState(node.text === "");
+  // 入力中のテキストをrefで保持 (re-renderで失われない)
+  const textRef = useRef<string>(node.text);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    // 編集開始時にフォーカスを当てる
     if (editing && inputRef.current) {
       const el = inputRef.current;
       el.focus();
       el.setSelectionRange(el.value.length, el.value.length);
+      // 高さを内容に合わせる
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
     }
   }, [editing]);
 
-  // 検索語ハイライト用
+  // node.text が外部から変わったとき (別の端末で更新など) に追従
+  useEffect(() => {
+    if (!editing) textRef.current = node.text;
+  }, [node.text, editing]);
+
+  const commitText = () => {
+    onChangeText(node.id, textRef.current);
+    setEditing(false);
+  };
+
   const highlight = (text: string) => {
     const q = query.trim();
-    if (!q) return text;
+    if (!q) return <>{text}</>;
     const idx = text.toLowerCase().indexOf(q.toLowerCase());
-    if (idx < 0) return text;
+    if (idx < 0) return <>{text}</>;
     return (
       <>
         {text.slice(0, idx)}
@@ -86,24 +96,21 @@ export function OutlineRow({
             ref={inputRef}
             defaultValue={node.text}
             rows={1}
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = "auto";
-              el.style.height = `${el.scrollHeight}px`;
+            onChange={(e) => {
+              textRef.current = e.target.value;
+              // 高さを自動調整
+              e.target.style.height = "auto";
+              e.target.style.height = `${e.target.scrollHeight}px`;
             }}
-            onBlur={(e) => {
-              onChangeText(node.id, e.currentTarget.value);
-              setEditing(false);
-            }}
+            onBlur={commitText}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                onChangeText(node.id, e.currentTarget.value);
-                setEditing(false);
-                onAddSibling(node.id); // Enter で同じ階層に新しい行
+                commitText();
+                onAddSibling(node.id);
               }
               if (e.key === "Escape") {
-                e.currentTarget.blur();
+                commitText();
               }
             }}
             className="mt-0.5 flex-1 resize-none rounded-md border border-accent bg-surface px-2 py-1 text-[15px] leading-relaxed text-ink outline-none"
@@ -154,7 +161,7 @@ export function OutlineRow({
         )}
       </div>
 
-      {/* 子ノード (折りたたまれていなければ) */}
+      {/* 子ノード */}
       {hasChildren && !node.collapsed && (
         <div>
           {node.children.map((child) => (

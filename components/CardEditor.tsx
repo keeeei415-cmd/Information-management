@@ -178,21 +178,41 @@ export function CardEditor({
 
         <div>
           <label className={labelClass}>部位 (複数選択可)</label>
-          <div className="flex flex-wrap gap-1.5">
-            {BODY_PARTS.map((part) => (
-              <button
-                key={part}
-                onClick={() => toggleTag(part)}
-                className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${
-                  tags.includes(part)
-                    ? "bg-accent text-white"
-                    : "border border-line bg-canvas text-ink-secondary"
-                }`}
-              >
-                {part}
-              </button>
+          {/* 選択済みチップ */}
+          {tags.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-[13px] font-medium text-white"
+                >
+                  {tag}
+                  <button
+                    onClick={() => toggleTag(tag)}
+                    aria-label={`${tag}を外す`}
+                    className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-white/20"
+                  >
+                    <Icon name="close" size={11} strokeWidth={2.5} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* ドロップダウン */}
+          <select
+            value=""
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val) toggleTag(val);
+              e.target.value = "";
+            }}
+            className={`${fieldClass} appearance-none`}
+          >
+            <option value="">＋ 部位を追加…</option>
+            {BODY_PARTS.filter((p) => !tags.includes(p)).map((part) => (
+              <option key={part} value={part}>{part}</option>
             ))}
-          </div>
+          </select>
         </div>
 
         {textAreas.map(({ key, label, rows }) => (
