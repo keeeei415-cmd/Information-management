@@ -12,7 +12,7 @@
  */
 
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
-import { blocksMatch, newBlock, readBlocks, type Block } from "@/lib/outline";
+import { blocksMatch, newBlock, pruneEmpty, readBlocks, type Block } from "@/lib/outline";
 import { useApp } from "@/lib/store";
 import { type Card } from "@/lib/types";
 import { BlockEditor } from "./BlockEditor";
@@ -70,12 +70,22 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     return map;
   }, [allCards]);
 
-  const toggleGroup = (name: string) =>
+  const toggleGroup = (name: string) => {
+    const willClose = openGroups.has(name);
+    // 閉じるときに空行を掃除する
+    if (willClose) {
+      const card = contentCardMap.get(name);
+      if (card) {
+        const cleaned = pruneEmpty(readBlocks(card.metadata));
+        void patchCard(card.id, { metadata: { blocks: cleaned } });
+      }
+    }
     setOpenGroups((prev) => {
       const next = new Set(prev);
       next.has(name) ? next.delete(name) : next.add(name);
       return next;
     });
+  };
 
   const saveGroupDefs = async (defs: GroupDef[]) => {
     if (!knowledgeTabId) return;

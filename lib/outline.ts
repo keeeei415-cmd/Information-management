@@ -106,3 +106,14 @@ export function blocksMatch(blocks: Block[], q: string): boolean {
     list.some((b) => b.text.toLowerCase().includes(needle) || walk(b.children));
   return walk(blocks);
 }
+
+/**
+ * 空のブロックを取り除く。
+ * ただし子を持つトグルは、中身があるので残す。
+ * (編集中の行は保存対象外なので、表示時のクリーンアップに使う)
+ */
+export function pruneEmpty(blocks: Block[]): Block[] {
+  return blocks
+    .map((b) => ({ ...b, children: pruneEmpty(b.children) }))
+    .filter((b) => b.text.trim() !== "" || b.children.length > 0);
+}

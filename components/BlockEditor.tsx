@@ -118,6 +118,8 @@ function BlockRow({
   const [editing, setEditing] = useState(block.text === "");
   const textRef  = useRef(block.text);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // 日本語入力(IME)の変換中かどうか
+  const composingRef = useRef(false);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -129,9 +131,18 @@ function BlockRow({
     }
   }, [editing]);
 
+  /** 編集終了。空ならブロックごと削除する */
   const commit = () => {
-    apply(updateBlock(blocks, block.id, { text: textRef.current }));
+    const text = textRef.current.trim();
     setEditing(false);
+    if (!text) {
+      // 空行は削除（ただし子を持つトグルは残す）
+      if (block.children.length === 0) {
+        apply(removeBlock(blocks, block.id));
+        return;
+      }
+    }
+    apply(updateBlock(blocks, block.id, { text: textRef.current }));
   };
 
   const isToggle = block.type === "toggle";
@@ -166,6 +177,8 @@ function BlockRow({
             ref={inputRef}
             defaultValue={block.text}
             rows={1}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             onChange={(e) => {
               textRef.current = e.target.value;
               e.target.style.height = "auto";
@@ -173,10 +186,23 @@ function BlockRow({
             }}
             onBlur={commit}
             onKeyDown={(e) => {
+              // IME 変換確定の Enter は無視する（日本語入力対策）
+              if (e.key === "Enter" && (composingRef.current || e.nativeEvent.isComposing)) {
+                return;
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 const t = textRef.current;
                 setEditing(false);
+
+                // 空行で Enter → 何もしない（行を増やさない）
+                if (!t.trim()) {
+                  if (block.children.length === 0) {
+                    apply(removeBlock(blocks, block.id));
+                  }
+                  return;
+                }
+
                 if (isToggle) {
                   // トグルで Enter → 中にテキスト行を追加
                   let next = updateBlock(blocks, block.id, { text: t, collapsed: false });
@@ -190,6 +216,12 @@ function BlockRow({
                 }
               }
               if (e.key === "Escape") commit();
+              // 空行で Backspace → 行を削除
+              if (e.key === "Backspace" && !textRef.current && block.children.length === 0) {
+                e.preventDefault();
+                setEditing(false);
+                apply(removeBlock(blocks, block.id));
+              }
             }}
             className={`mt-0.5 flex-1 resize-none rounded border border-accent bg-surface px-1.5 py-1 text-[14px] leading-relaxed text-ink outline-none ${
               isToggle ? "font-medium" : ""
@@ -242,7 +274,11 @@ function BlockRow({
           ))}
           {/* 中に行を追加 (常に薄く表示) */}
           <button
-            onClick={() => apply(addChildBlock(blocks, block.id, newBlock("text")))}
+            onClick={() => {
+              const last = block.children[block.children.length - 1];
+              if (last && !last.text.trim() && last.children.length === 0) return;
+              apply(addChildBlock(blocks, block.id, newBlock("text")));
+            }}
             className="my-0.5 flex items-center gap-1.5 rounded px-1.5 py-1 text-[12px] text-ink-tertiary/50 hover:bg-canvas hover:text-ink-secondary"
           >
             <Icon name="plus" size={12} /> 行を追加
@@ -261,15 +297,22 @@ export function BlockEditor({
   blocks: Block[];
   onChange: (next: Block[]) => void;
 }) {
+  const addRow = () => {
+    // 末尾がすでに空行なら増やさない
+    const last = blocks[blocks.length - 1];
+    if (last && !last.text.trim() && last.children.length === 0) return;
+    onChange([...blocks, newBlock("text")]);
+  };
+
   return (
     <div className="py-1">
       {blocks.map((block) => (
         <BlockRow key={block.id} block={block} blocks={blocks} apply={onChange} />
       ))}
 
-      {/* 末尾: クリックで新しい行 (Notion の空白部分クリックの感覚) */}
+      {/* 末尾: クリックで新しい行 */}
       <button
-        onClick={() => onChange([...blocks, newBlock("text")])}
+        onClick={addRow}
         className="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-ink-tertiary/50 hover:bg-canvas hover:text-ink-secondary"
       >
         <Icon name="plus" size={13} />
