@@ -230,6 +230,127 @@ function BlockRow({
     );
   }
 
+  // ---- トグルは枠で囲って専用描画 ----
+  if (isToggle) {
+    return (
+      <div className="my-1 overflow-visible rounded-lg border border-line bg-canvas/40">
+        {/* トグルヘッダー */}
+        <div className="group/row flex items-start gap-0.5 px-1.5 py-1">
+          <TypeMenu
+            current={block.type}
+            onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
+            onPickChild={(t) => apply(addChildBlock(blocks, block.id, newBlock(t)))}
+          />
+
+          {/* 黒い三角マーク */}
+          <button
+            onClick={() => apply(updateBlock(blocks, block.id, { collapsed: !block.collapsed }))}
+            aria-label={block.collapsed ? "展開" : "折りたたむ"}
+            className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink hover:bg-line/60"
+          >
+            <Icon name={block.collapsed ? "triangleRight" : "triangleDown"} size={11} filled />
+          </button>
+
+          {/* タイトル */}
+          {editing ? (
+            <textarea
+              ref={inputRef}
+              defaultValue={block.text}
+              rows={1}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={() => { composingRef.current = false; }}
+              onChange={(e) => {
+                textRef.current = e.target.value;
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (composingRef.current || e.nativeEvent.isComposing)) return;
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  const t = textRef.current;
+                  if (!t.trim()) {
+                    if (block.children.length === 0) deleteAndFocusPrev();
+                    return;
+                  }
+                  setEditing(false);
+                  const nb = newBlock("text");
+                  let next = updateBlock(blocks, block.id, { text: t, collapsed: false });
+                  next = addChildBlock(next, block.id, nb);
+                  apply(next);
+                  setFocusId(nb.id);
+                  return;
+                }
+                if (e.key === "Backspace" && !textRef.current && block.children.length === 0) {
+                  e.preventDefault();
+                  deleteAndFocusPrev();
+                  return;
+                }
+                if (e.key === "Escape") commit();
+              }}
+              className="mt-0.5 flex-1 resize-none rounded border border-accent bg-surface px-1.5 py-1 text-[14px] font-semibold leading-relaxed text-ink outline-none"
+            />
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className={`mt-0.5 min-h-[28px] flex-1 whitespace-pre-wrap break-words px-1.5 py-1 text-left text-[14px] font-semibold leading-relaxed ${
+                block.text ? "text-ink" : "text-ink-tertiary"
+              }`}
+            >
+              {block.text || "トグルのタイトル…"}
+            </button>
+          )}
+
+          {!editing && (
+            <div className="ml-0.5 mt-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
+              <button onClick={() => apply(moveBlock(blocks, block.id, -1))} aria-label="上へ"
+                className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-line hover:text-ink">
+                <Icon name="up" size={11} />
+              </button>
+              <button onClick={() => apply(moveBlock(blocks, block.id, 1))} aria-label="下へ"
+                className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-line hover:text-ink">
+                <Icon name="down" size={11} />
+              </button>
+              <button onClick={deleteAndFocusPrev} aria-label="削除"
+                className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-red-50 hover:text-danger">
+                <Icon name="trash" size={11} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* トグルの中身 */}
+        {!block.collapsed && (
+          <div className="border-t border-line bg-surface px-1.5 py-1">
+            {block.children.map((child) => (
+              <BlockRow
+                key={child.id}
+                block={child}
+                blocks={blocks}
+                apply={apply}
+                focusId={focusId}
+                setFocusId={setFocusId}
+              />
+            ))}
+            <button
+              onClick={() => {
+                const last = block.children[block.children.length - 1];
+                if (last && !last.text.trim() && last.children.length === 0 && last.type !== "divider") return;
+                const nb = newBlock("text");
+                apply(addChildBlock(blocks, block.id, nb));
+                setFocusId(nb.id);
+              }}
+              className="my-0.5 flex items-center gap-1.5 rounded px-1.5 py-1 text-[12px] text-ink-tertiary/50 hover:bg-canvas hover:text-ink-secondary"
+            >
+              <Icon name="plus" size={12} /> 行を追加
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="group/row flex items-start gap-0.5">
@@ -237,19 +358,10 @@ function BlockRow({
         <TypeMenu
           current={block.type}
           onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
-          onPickChild={isToggle ? (t) => apply(addChildBlock(blocks, block.id, newBlock(t))) : undefined}
         />
 
         {/* 行頭マーク */}
-        {isToggle ? (
-          <button
-            onClick={() => apply(updateBlock(blocks, block.id, { collapsed: !block.collapsed }))}
-            aria-label={block.collapsed ? "展開" : "折りたたむ"}
-            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-secondary hover:bg-canvas"
-          >
-            <Icon name={block.collapsed ? "chevronRight" : "chevronDown"} size={15} strokeWidth={2.4} />
-          </button>
-        ) : isTodo ? (
+        {isTodo ? (
           <button
             onClick={() => apply(updateBlock(blocks, block.id, { checked: !block.checked }))}
             aria-label={block.checked ? "未完了に戻す" : "完了にする"}
@@ -292,11 +404,9 @@ function BlockRow({
                   return;
                 }
                 setEditing(false);
-                const nb = newBlock(isToggle ? "text" : block.type);
-                let next = updateBlock(blocks, block.id, isToggle ? { text: t, collapsed: false } : { text: t });
-                next = isToggle
-                  ? addChildBlock(next, block.id, nb)
-                  : insertAfter(next, block.id, nb);
+                const nb = newBlock(block.type);
+                let next = updateBlock(blocks, block.id, { text: t });
+                next = insertAfter(next, block.id, nb);
                 apply(next);
                 setFocusId(nb.id);
                 return;
@@ -310,16 +420,12 @@ function BlockRow({
 
               if (e.key === "Escape") commit();
             }}
-            className={`mt-0.5 flex-1 resize-none rounded border border-accent bg-surface px-1.5 py-1 text-[14px] leading-relaxed text-ink outline-none ${
-              isToggle ? "font-medium" : ""
-            }`}
+            className="mt-0.5 flex-1 resize-none rounded border border-accent bg-surface px-1.5 py-1 text-[14px] leading-relaxed text-ink outline-none"
           />
         ) : (
           <button
             onClick={() => setEditing(true)}
             className={`mt-0.5 min-h-[28px] flex-1 whitespace-pre-wrap break-words px-1.5 py-1 text-left text-[14px] leading-relaxed ${
-              isToggle ? "font-medium" : ""
-            } ${
               isTodo && block.checked ? "text-ink-tertiary line-through" : block.text ? "text-ink" : "text-ink-tertiary"
             }`}
           >
@@ -345,34 +451,6 @@ function BlockRow({
           </div>
         )}
       </div>
-
-      {/* トグルの中身 */}
-      {isToggle && !block.collapsed && (
-        <div className="ml-[30px] border-l border-line pl-1.5">
-          {block.children.map((child) => (
-            <BlockRow
-              key={child.id}
-              block={child}
-              blocks={blocks}
-              apply={apply}
-              focusId={focusId}
-              setFocusId={setFocusId}
-            />
-          ))}
-          <button
-            onClick={() => {
-              const last = block.children[block.children.length - 1];
-              if (last && !last.text.trim() && last.children.length === 0 && last.type !== "divider") return;
-              const nb = newBlock("text");
-              apply(addChildBlock(blocks, block.id, nb));
-              setFocusId(nb.id);
-            }}
-            className="my-0.5 flex items-center gap-1.5 rounded px-1.5 py-1 text-[12px] text-ink-tertiary/50 hover:bg-canvas hover:text-ink-secondary"
-          >
-            <Icon name="plus" size={12} /> 行を追加
-          </button>
-        </div>
-      )}
     </div>
   );
 }

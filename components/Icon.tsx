@@ -25,6 +25,8 @@ const PATHS: Record<string, string> = {
   square: "M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z",
   checkSquare: "M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 12l3 3 5-6",
   minus: "M5 12h14",
+  triangleRight: "M9 5l8 7-8 7z",
+  triangleDown: "M5 9l7 8 7-8z",
 };
 
 export function Icon({
@@ -32,20 +34,23 @@ export function Icon({
   size = 20,
   strokeWidth = 1.8,
   className = "",
+  filled = false,
 }: {
   name: keyof typeof PATHS | string;
   size?: number;
   strokeWidth?: number;
   className?: string;
+  /** 塗りつぶし表示 (三角マークなど) */
+  filled?: boolean;
 }) {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
-      strokeWidth={strokeWidth}
+      strokeWidth={filled ? 0 : strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}

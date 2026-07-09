@@ -34,6 +34,7 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
   const [query,       setQuery]       = useState("");
   const [openGroups,  setOpenGroups]  = useState<Set<string>>(new Set());
   const [addingGroup, setAddingGroup] = useState(false);
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     openAddGroup: () => setAddingGroup(true),
@@ -114,6 +115,28 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     setOpenGroups((prev) => new Set(prev).add(trimmed));
   };
 
+  /** グループ名を変更する (定義とコンテンツカードのタイトル両方を更新) */
+  const renameGroup = async (oldName: string, newName: string) => {
+    setRenamingGroup(null);
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    if (groupDefs.some((g) => g.name === trimmed)) {
+      window.alert(`「${trimmed}」は既に存在します`);
+      return;
+    }
+    // 1. グループ定義を更新
+    await saveGroupDefs(groupDefs.map((g) => (g.name === oldName ? { name: trimmed } : g)));
+    // 2. コンテンツカードのタイトルを更新
+    const card = contentCardMap.get(oldName);
+    if (card) await patchCard(card.id, { title: trimmed });
+    // 3. 開閉状態を引き継ぐ
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.delete(oldName)) next.add(trimmed);
+      return next;
+    });
+  };
+
   const removeGroup = async (name: string) => {
     if (!window.confirm(`グループ「${name}」とその内容を削除しますか?`)) return;
     await saveGroupDefs(groupDefs.filter((g) => g.name !== name));
@@ -185,7 +208,7 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
           return (
             <section
               key={g.name}
-              className="overflow-hidden rounded-card border border-line bg-surface shadow-card"
+              className="rounded-card border border-line bg-surface shadow-card"
             >
               {/* グループヘッダー */}
               <div className="flex items-center gap-2 px-2.5 py-2.5">
@@ -202,6 +225,13 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
                 </button>
                 <button onClick={() => toggleGroup(g.name)} className="flex-1 text-left">
                   <span className="text-[16px] font-semibold text-ink">{g.name}</span>
+                </button>
+                <button
+                  onClick={() => setRenamingGroup(g.name)}
+                  aria-label="グループ名を編集"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-tertiary hover:bg-canvas hover:text-accent"
+                >
+                  <Icon name="edit" size={15} />
                 </button>
                 <button
                   onClick={() => void removeGroup(g.name)}
@@ -235,8 +265,21 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
       {/* グループ追加モーダル */}
       {addingGroup && (
         <GroupNameModal
+          title="グループを追加"
+          confirmLabel="追加"
           onClose={() => setAddingGroup(false)}
           onSave={(name) => void addGroup(name)}
+        />
+      )}
+
+      {/* グループ名編集モーダル */}
+      {renamingGroup && (
+        <GroupNameModal
+          title="グループ名を編集"
+          confirmLabel="保存"
+          initialValue={renamingGroup}
+          onClose={() => setRenamingGroup(null)}
+          onSave={(name) => void renameGroup(renamingGroup, name)}
         />
       )}
     </div>
@@ -244,18 +287,26 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
 });
 KnowledgeScreen.displayName = "KnowledgeScreen";
 
-// ---- グループ名入力モーダル ----
+// ---- グループ名入力モーダル (追加・編集で共用) ----
 function GroupNameModal({
+  title,
+  confirmLabel,
+  initialValue = "",
   onClose,
   onSave,
 }: {
+  title: string;
+  confirmLabel: string;
+  initialValue?: string;
   onClose: () => void;
   onSave: (name: string) => void;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialValue);
+  const canSave = name.trim().length > 0;
+
   return (
     <Modal
-      title="グループを追加"
+      title={title}
       onClose={onClose}
       footer={
         <div className="flex gap-2">
@@ -266,11 +317,11 @@ function GroupNameModal({
             キャンセル
           </button>
           <button
-            disabled={!name.trim()}
-            onClick={() => { if (name.trim()) onSave(name.trim()); }}
+            disabled={!canSave}
+            onClick={() => { if (canSave) onSave(name.trim()); }}
             className="h-11 flex-1 rounded-xl bg-accent text-[15px] font-semibold text-white disabled:opacity-40"
           >
-            追加
+            {confirmLabel}
           </button>
         </div>
       }
@@ -278,7 +329,7 @@ function GroupNameModal({
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && name.trim() && onSave(name.trim())}
+        onKeyDown={(e) => e.key === "Enter" && canSave && onSave(name.trim())}
         placeholder="例: 頸部"
         autoFocus
         className="w-full rounded-xl border border-line bg-canvas px-3 py-3 text-[16px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
