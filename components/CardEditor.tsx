@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CARD_COLORS, CARD_COLOR_KEYS } from "@/lib/colors";
 import { useApp } from "@/lib/store";
 import {
@@ -47,7 +47,25 @@ export function CardEditor({
   const [tags, setTags]     = useState<string[]>(card?.tags ?? []);
   const [color, setColor]   = useState<CardColor>(card?.color ?? "default");
   const [group, setGroup]   = useState(card?.category ?? "");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupInput, setNewGroupInput] = useState("");
+  const [extraGroups, setExtraGroups]     = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // 既存グループ + このセッションで新規作成したグループを合算
+  const allGroups = useMemo(
+    () => [...new Set([...groups, ...extraGroups])],
+    [groups, extraGroups]
+  );
+
+  const confirmNewGroup = () => {
+    const name = newGroupInput.trim();
+    if (!name) return;
+    setExtraGroups((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setGroup(name);
+    setCreatingGroup(false);
+    setNewGroupInput("");
+  };
 
   const set = (key: keyof ClinicalData, value: string) =>
     setClinical((prev) => ({ ...prev, [key]: value }));
@@ -143,20 +161,54 @@ export function CardEditor({
           </p>
         </div>
 
-        {groups.length > 0 && (
-          <div>
-            <label className={labelClass} htmlFor="rec-group">グループ</label>
-            <select
-              id="rec-group"
-              value={group}
-              onChange={(e) => setGroup(e.target.value)}
-              className={`${fieldClass} appearance-none`}
-            >
-              <option value="">未分類</option>
-              {groups.map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
-          </div>
-        )}
+        <div>
+          <label className={labelClass} htmlFor="rec-group">グループ</label>
+          <select
+            id="rec-group"
+            value={group}
+            onChange={(e) => {
+              if (e.target.value === "__new__") {
+                setCreatingGroup(true);
+                e.target.value = group; // reset
+              } else {
+                setGroup(e.target.value);
+              }
+            }}
+            className={`${fieldClass} appearance-none`}
+          >
+            <option value="">未分類</option>
+            {allGroups.map((g) => <option key={g} value={g}>{g}</option>)}
+            <option value="__new__">＋ 新規グループを作成…</option>
+          </select>
+          {creatingGroup && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={newGroupInput}
+                onChange={(e) => setNewGroupInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmNewGroup();
+                  if (e.key === "Escape") { setCreatingGroup(false); setNewGroupInput(""); }
+                }}
+                autoFocus
+                placeholder="新しいグループ名"
+                className={`${fieldClass} flex-1`}
+              />
+              <button
+                onClick={confirmNewGroup}
+                disabled={!newGroupInput.trim()}
+                className="h-[46px] rounded-xl bg-accent px-4 text-[14px] font-semibold text-white disabled:opacity-40"
+              >
+                作成
+              </button>
+              <button
+                onClick={() => { setCreatingGroup(false); setNewGroupInput(""); }}
+                className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-line text-ink-tertiary"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>

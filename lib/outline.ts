@@ -1,99 +1,108 @@
 /**
- * 「知識」タブで使う階層アウトラインの型と操作関数。
- * データは card.metadata.outline に OutlineNode[] として保存する。
- * 1枚のカード = 1つの「部位」(例: 頸) で、その中に項目→箇条書き→…と何層でもネストできる。
+ * 知識タブのブロックエディタ型定義。
+ * card.metadata.blocks に Block[] として保存する。
+ * DB スキーマ変更なし。
  *
- * すべて純粋関数 (元配列を壊さず新しい配列を返す) にしてあるので、
- * UI 側は「新しい木を作って保存」するだけでよい。
+ * 今後追加しやすい種類:
+ *   "heading" | "image" | "link" | "checklist" | "divider" | ...
  */
 
-export interface OutlineNode {
+export type BlockType = "bullet" | "toggle" | "text";
+
+export interface Block {
   id: string;
+  type: BlockType;
   text: string;
-  collapsed: boolean; // トグルを閉じているか
-  children: OutlineNode[];
+  collapsed: boolean;      // toggle 専用
+  children: Block[];       // toggle の中に入れ子
 }
 
-export function newNode(text = ""): OutlineNode {
+// ---- ファクトリ ----
+
+export function newBlock(type: BlockType = "bullet"): Block {
   return {
-    id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    text,
+    id: `b_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    text: "",
     collapsed: false,
     children: [],
   };
 }
 
-/** card.metadata から安全にツリーを取り出す */
-export function readOutline(metadata: Record<string, unknown>): OutlineNode[] {
-  const raw = (metadata as { outline?: OutlineNode[] })?.outline;
+// ---- DB 読み書き ----
+
+export function readBlocks(metadata: Record<string, unknown>): Block[] {
+  const raw = (metadata as { blocks?: Block[] })?.blocks;
   return Array.isArray(raw) ? raw : [];
 }
 
-/** 指定 id のノードを更新する (再帰) */
-export function updateNode(
-  nodes: OutlineNode[],
+// ---- ツリー操作（すべて純粋関数）----
+
+export function updateBlock(
+  blocks: Block[],
   id: string,
-  patch: Partial<OutlineNode>
-): OutlineNode[] {
-  return nodes.map((n) => {
-    if (n.id === id) return { ...n, ...patch };
-    if (n.children.length) return { ...n, children: updateNode(n.children, id, patch) };
-    return n;
+  patch: Partial<Block>
+): Block[] {
+  return blocks.map((b) => {
+    if (b.id === id) return { ...b, ...patch };
+    if (b.children.length) return { ...b, children: updateBlock(b.children, id, patch) };
+    return b;
   });
 }
 
-/** 指定 id のノードを削除する (再帰) */
-export function removeNode(nodes: OutlineNode[], id: string): OutlineNode[] {
-  return nodes
-    .filter((n) => n.id !== id)
-    .map((n) =>
-      n.children.length ? { ...n, children: removeNode(n.children, id) } : n
+export function removeBlock(blocks: Block[], id: string): Block[] {
+  return blocks
+    .filter((b) => b.id !== id)
+    .map((b) =>
+      b.children.length ? { ...b, children: removeBlock(b.children, id) } : b
     );
 }
 
-/** 指定 id のノードの子として新規ノードを追加し、追加したノードの id を返す */
-export function addChild(
-  nodes: OutlineNode[],
+/** parentId の直下の末尾に block を追加する */
+export function addChildBlock(
+  blocks: Block[],
   parentId: string,
-  child: OutlineNode
-): OutlineNode[] {
-  return nodes.map((n) => {
-    if (n.id === parentId) {
-      return { ...n, collapsed: false, children: [...n.children, child] };
-    }
-    if (n.children.length) {
-      return { ...n, children: addChild(n.children, parentId, child) };
-    }
-    return n;
+  block: Block
+): Block[] {
+  return blocks.map((b) => {
+    if (b.id === parentId) return { ...b, collapsed: false, children: [...b.children, block] };
+    if (b.children.length) return { ...b, children: addChildBlock(b.children, parentId, block) };
+    return b;
   });
 }
 
-/** ある id の兄弟リスト内で上下に移動する (再帰的に該当リストを探す) */
-export function moveNode(
-  nodes: OutlineNode[],
-  id: string,
-  direction: -1 | 1
-): OutlineNode[] {
-  const index = nodes.findIndex((n) => n.id === id);
-  if (index >= 0) {
-    const target = index + direction;
-    if (target < 0 || target >= nodes.length) return nodes;
-    const next = [...nodes];
-    [next[index], next[target]] = [next[target], next[index]];
+/** id と同じ階層の直後に block を挿入する */
+export function insertAfter(blocks: Block[], id: string, block: Block): Block[] {
+  const idx = blocks.findIndex((b) => b.id === id);
+  if (idx >= 0) {
+    const next = [...blocks];
+    next.splice(idx + 1, 0, block);
     return next;
   }
-  return nodes.map((n) =>
-    n.children.length ? { ...n, children: moveNode(n.children, id, direction) } : n
+  return blocks.map((b) =>
+    b.children.length ? { ...b, children: insertAfter(b.children, id, block) } : b
   );
 }
 
-/** 検索用: ツリー内のどこかに文字列が含まれるか */
-export function outlineMatches(nodes: OutlineNode[], q: string): boolean {
+export function moveBlock(blocks: Block[], id: string, dir: -1 | 1): Block[] {
+  const idx = blocks.findIndex((b) => b.id === id);
+  if (idx >= 0) {
+    const target = idx + dir;
+    if (target < 0 || target >= blocks.length) return blocks;
+    const next = [...blocks];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    return next;
+  }
+  return blocks.map((b) =>
+    b.children.length ? { ...b, children: moveBlock(b.children, id, dir) } : b
+  );
+}
+
+/** 検索: テキストを再帰的に検索 */
+export function blocksMatch(blocks: Block[], q: string): boolean {
   const needle = q.trim().toLowerCase();
   if (!needle) return true;
-  const walk = (list: OutlineNode[]): boolean =>
-    list.some(
-      (n) => n.text.toLowerCase().includes(needle) || walk(n.children)
-    );
-  return walk(nodes);
+  const walk = (list: Block[]): boolean =>
+    list.some((b) => b.text.toLowerCase().includes(needle) || walk(b.children));
+  return walk(blocks);
 }
