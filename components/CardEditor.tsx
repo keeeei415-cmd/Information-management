@@ -29,21 +29,24 @@ const GENDERS: Gender[] = ["男性", "女性", "その他"];
 export function CardEditor({
   card,
   tabId,
+  groups = [],
   onClose,
 }: {
   card?: Card;
   tabId: string;
+  groups?: string[];
   onClose: () => void;
 }) {
   const { addCard, patchCard, removeCard } = useApp();
 
   const initial: ClinicalData = card ? getClinical(card) : EMPTY_CLINICAL;
 
-  const [title, setTitle] = useState(card?.title ?? "");
+  const [title, setTitle]   = useState(card?.title ?? "");
   const [clinical, setClinical] = useState<ClinicalData>(initial);
-  const [memo, setMemo] = useState(card?.content ?? "");
-  const [tags, setTags] = useState<string[]>(card?.tags ?? []);
-  const [color, setColor] = useState<CardColor>(card?.color ?? "default");
+  const [memo, setMemo]     = useState(card?.content ?? "");
+  const [tags, setTags]     = useState<string[]>(card?.tags ?? []);
+  const [color, setColor]   = useState<CardColor>(card?.color ?? "default");
+  const [group, setGroup]   = useState(card?.category ?? "");
   const [saving, setSaving] = useState(false);
 
   const set = (key: keyof ClinicalData, value: string) =>
@@ -62,6 +65,7 @@ export function CardEditor({
     const payload = {
       title: title.trim(),
       content: memo,
+      category: group || null,
       tags,
       color,
       metadata: { clinical },
@@ -138,6 +142,21 @@ export function CardEditor({
             個人情報 (氏名など) は入力しないでください
           </p>
         </div>
+
+        {groups.length > 0 && (
+          <div>
+            <label className={labelClass} htmlFor="rec-group">グループ</label>
+            <select
+              id="rec-group"
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
+              className={`${fieldClass} appearance-none`}
+            >
+              <option value="">未分類</option>
+              {groups.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>

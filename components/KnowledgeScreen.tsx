@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { useApp } from "@/lib/store";
 import { BODY_PARTS, type Card } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
 const UNGROUPED = "未分類";
-/** グループ一覧を保存する特殊カードのタイトル (画面には表示しない) */
 const GROUPS_CARD_TITLE = "__groups__";
 
-export function KnowledgeScreen() {
+export interface KnowledgeScreenHandle {
+  openAddGroup: () => void;
+  openAddCard:  () => void;
+}
+
+export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
   const { cards, addCard, patchCard, removeCard, tabs } = useApp();
 
   const [query, setQuery] = useState("");
@@ -19,6 +23,11 @@ export function KnowledgeScreen() {
   const [creating, setCreating] = useState(false);
   const [addingGroup, setAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+
+  useImperativeHandle(ref, () => ({
+    openAddGroup: () => setAddingGroup(true),
+    openAddCard:  () => setCreating(true),
+  }));
 
   const knowledgeTabId = useMemo(
     () => tabs.find((t) => t.name === "知識")?.id ?? null,
@@ -225,14 +234,14 @@ export function KnowledgeScreen() {
                               aria-label="コピー"
                               className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-ink-secondary hover:text-accent"
                             >
-                              <Icon name="edit" size={15} />
+                              <Icon name="copy" size={15} />
                             </button>
                             <button
                               onClick={() => setEditingCard(card)}
                               aria-label="編集"
                               className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-ink-secondary hover:text-accent"
                             >
-                              <Icon name="settings" size={15} />
+                              <Icon name="edit" size={15} />
                             </button>
                             <button
                               onClick={() => {
@@ -308,15 +317,6 @@ export function KnowledgeScreen() {
         </div>
       )}
 
-      {/* FAB */}
-      <button
-        onClick={() => setCreating(true)}
-        aria-label="知識を追加"
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-modal transition-transform active:scale-95"
-      >
-        <Icon name="plus" size={26} strokeWidth={2.2} />
-      </button>
-
       {/* モーダル */}
       {creating && knowledgeTabId && (
         <KnowledgeCardEditor
@@ -342,7 +342,8 @@ export function KnowledgeScreen() {
       )}
     </div>
   );
-}
+});
+KnowledgeScreen.displayName = "KnowledgeScreen";
 
 // ---- 知識カード専用エディタ ----
 function KnowledgeCardEditor({
