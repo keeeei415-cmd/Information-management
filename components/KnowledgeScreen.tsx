@@ -98,7 +98,7 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
       await addCard({
         tab_id: knowledgeTabId,
         title: trimmed,
-        metadata: { blocks: [newBlock("bullet")] },
+        metadata: { blocks: [newBlock("text")] },
       });
     }
     setOpenGroups((prev) => new Set(prev).add(trimmed));
@@ -209,7 +209,6 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
                     <BlockEditor
                       blocks={blocks}
                       onChange={(next) => saveBlocks(g.name, next)}
-                      onSave={(next) => saveBlocks(g.name, next)}
                     />
                   ) : (
                     <p className="py-4 text-center text-[13px] text-ink-tertiary">

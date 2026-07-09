@@ -2,8 +2,13 @@
 
 /**
  * Notion 風ブロックエディタ。
- * グループ内のブロック一覧を受け取り、編集 UI を描画する。
- * 状態は持たず、変更はすべて onSave(newBlocks) で親に返す。
+ *
+ * 仕様:
+ * - グループ内は自由にテキスト行を入力できる (Enter で次の行)
+ * - 各行の先頭に半透明の ＋ ボタン → トグルなどを追加
+ * - トグルの中にさらにトグルを入れ子にできる (深さ無制限)
+ * - トグルの中に何行でもテキストを書ける
+ * - トグルのタイトルで Enter → トグルの中に行を追加
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -19,32 +24,100 @@ import {
 } from "@/lib/outline";
 import { Icon } from "./Icon";
 
-// ---- ブロック種別メニュー ----
-const BLOCK_TYPES: { type: BlockType; icon: string; label: string }[] = [
-  { type: "bullet", icon: "dot",    label: "箇条書き" },
+// ＋メニューの選択肢 (今後ここに追加していく)
+const ADD_MENU: { type: BlockType; icon: string; label: string }[] = [
+  { type: "text",   icon: "edit",         label: "テキスト行" },
+  { type: "bullet", icon: "dot",          label: "箇条書き" },
   { type: "toggle", icon: "chevronRight", label: "トグル" },
-  { type: "text",   icon: "edit",   label: "テキスト" },
 ];
 
-// ---- 1行コンポーネント ----
+/** ＋ボタンとそのメニュー */
+function AddMenu({
+  faint = true,
+  onSelect,
+  extraLabel,
+  onSelectChild,
+}: {
+  faint?: boolean;
+  onSelect: (t: BlockType) => void;
+  /** トグル行のとき「この中に追加」メニューも出す */
+  extraLabel?: string;
+  onSelectChild?: (t: BlockType) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="追加"
+        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors ${
+          faint
+            ? "text-ink-tertiary/35 hover:bg-canvas hover:text-ink-secondary"
+            : "text-ink-secondary hover:bg-canvas"
+        }`}
+      >
+        <Icon name="plus" size={15} strokeWidth={2} />
+      </button>
+      {open && (
+        <div className="absolute left-7 top-0 z-50 min-w-[170px] overflow-hidden rounded-xl border border-line bg-surface shadow-modal">
+          {ADD_MENU.map((m) => (
+            <button
+              key={m.type}
+              onClick={() => { setOpen(false); onSelect(m.type); }}
+              className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-[14px] text-ink hover:bg-canvas"
+            >
+              <Icon name={m.icon} size={15} className="text-ink-secondary" />
+              {m.label}
+            </button>
+          ))}
+          {onSelectChild && (
+            <>
+              <p className="border-t border-line px-3.5 py-1.5 text-[11px] font-medium text-ink-tertiary">
+                {extraLabel ?? "この中に追加"}
+              </p>
+              {ADD_MENU.map((m) => (
+                <button
+                  key={"c" + m.type}
+                  onClick={() => { setOpen(false); onSelectChild(m.type); }}
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-[14px] text-ink hover:bg-canvas"
+                >
+                  <Icon name={m.icon} size={15} className="text-ink-secondary" />
+                  {m.label}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 1行 (再帰) */
 function BlockRow({
   block,
-  depth,
-  onSave,     // ツリー全体を保存
-  blocks,     // ツリー全体（更新関数に渡す）
-  onChangeAll,
+  blocks,
+  apply,
 }: {
   block: Block;
-  depth: number;
-  onSave: (b: Block[]) => void;
   blocks: Block[];
-  onChangeAll: (b: Block[]) => void;
+  /** ツリー全体を差し替えて保存する */
+  apply: (next: Block[]) => void;
 }) {
-  const [editing, setEditing]   = useState(block.text === "");
-  const [showMenu, setShowMenu] = useState(false);
-  const textRef = useRef<string>(block.text);
+  const [editing, setEditing] = useState(block.text === "");
+  const textRef  = useRef(block.text);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const menuRef  = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -56,117 +129,38 @@ function BlockRow({
     }
   }, [editing]);
 
-  // メニュー外クリックで閉じる
-  useEffect(() => {
-    if (!showMenu) return;
-    const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setShowMenu(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [showMenu]);
-
   const commit = () => {
-    onChangeAll(updateBlock(blocks, block.id, { text: textRef.current }));
+    apply(updateBlock(blocks, block.id, { text: textRef.current }));
     setEditing(false);
   };
 
-  const addBlock = (type: BlockType) => {
-    setShowMenu(false);
-    const nb = newBlock(type);
-    onChangeAll(insertAfter(blocks, block.id, nb));
-  };
-
-  const addChild = (type: BlockType) => {
-    setShowMenu(false);
-    const nb = newBlock(type);
-    onChangeAll(addChildBlock(blocks, block.id, nb));
-  };
-
-  const toggleCollapse = () =>
-    onChangeAll(updateBlock(blocks, block.id, { collapsed: !block.collapsed }));
-
-  const del = () => {
-    const next = removeBlock(blocks, block.id);
-    onChangeAll(next);
-    onSave(next);
-  };
+  const isToggle = block.type === "toggle";
 
   return (
     <div>
-      <div
-        className="group/row flex items-start gap-0.5 py-0.5"
-        style={{ paddingLeft: depth * 20 }}
-      >
-        {/* ＋ ボタン (常に薄く、ホバーで濃く) */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setShowMenu((v) => !v)}
-            aria-label="ブロックを追加"
-            className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-tertiary/40 hover:bg-canvas hover:text-ink-secondary"
-          >
-            <Icon name="plus" size={14} strokeWidth={2} />
-          </button>
+      <div className="group/row flex items-start gap-0.5">
+        {/* 半透明の ＋ */}
+        <AddMenu
+          onSelect={(t) => apply(insertAfter(blocks, block.id, newBlock(t)))}
+          onSelectChild={isToggle ? (t) => apply(addChildBlock(blocks, block.id, newBlock(t))) : undefined}
+        />
 
-          {/* ブロック種別メニュー */}
-          {showMenu && (
-            <div className="absolute left-6 top-0 z-50 overflow-hidden rounded-xl border border-line bg-surface shadow-modal">
-              <p className="border-b border-line px-3 py-1.5 text-[11px] font-medium text-ink-tertiary">
-                種類を選択
-              </p>
-              {/* 同じ階層に追加 */}
-              {BLOCK_TYPES.map((bt) => (
-                <button
-                  key={bt.type}
-                  onClick={() => addBlock(bt.type)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-[14px] text-ink hover:bg-canvas"
-                >
-                  <Icon name={bt.icon} size={15} className="text-ink-secondary" />
-                  {bt.label}
-                </button>
-              ))}
-              {/* トグルの中に追加 */}
-              {block.type === "toggle" && (
-                <>
-                  <p className="border-t border-line px-3 py-1.5 text-[11px] font-medium text-ink-tertiary">
-                    この中に追加
-                  </p>
-                  {BLOCK_TYPES.map((bt) => (
-                    <button
-                      key={"child-" + bt.type}
-                      onClick={() => addChild(bt.type)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-[14px] text-ink hover:bg-canvas"
-                    >
-                      <Icon name={bt.icon} size={15} className="text-ink-secondary" />
-                      {bt.label}（中に）
-                    </button>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ブロック左アイコン */}
-        {block.type === "toggle" ? (
+        {/* 行頭マーク */}
+        {isToggle ? (
           <button
-            onClick={toggleCollapse}
+            onClick={() => apply(updateBlock(blocks, block.id, { collapsed: !block.collapsed }))}
             aria-label={block.collapsed ? "展開" : "折りたたむ"}
-            className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-secondary hover:bg-canvas"
+            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-secondary hover:bg-canvas"
           >
-            <Icon
-              name={block.collapsed ? "chevronRight" : "chevronDown"}
-              size={14}
-              strokeWidth={2.4}
-            />
+            <Icon name={block.collapsed ? "chevronRight" : "chevronDown"} size={15} strokeWidth={2.4} />
           </button>
         ) : block.type === "bullet" ? (
-          <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-tertiary" />
+          <span className="mx-2 mt-[11px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-tertiary" />
         ) : (
-          <span className="w-2 shrink-0" />
+          <span className="w-1.5 shrink-0" />
         )}
 
-        {/* テキスト本体 */}
+        {/* テキスト */}
         {editing ? (
           <textarea
             ref={inputRef}
@@ -181,51 +175,56 @@ function BlockRow({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                commit();
-                // 同じ種類で次の行を追加
-                const nb = newBlock(block.type === "toggle" ? "bullet" : block.type);
-                onChangeAll(insertAfter(blocks, block.id, nb));
+                const t = textRef.current;
+                setEditing(false);
+                if (isToggle) {
+                  // トグルで Enter → 中にテキスト行を追加
+                  let next = updateBlock(blocks, block.id, { text: t, collapsed: false });
+                  next = addChildBlock(next, block.id, newBlock("text"));
+                  apply(next);
+                } else {
+                  // 通常行 → 同じ階層に次の行
+                  let next = updateBlock(blocks, block.id, { text: t });
+                  next = insertAfter(next, block.id, newBlock(block.type));
+                  apply(next);
+                }
               }
               if (e.key === "Escape") commit();
             }}
-            className={`mt-0.5 flex-1 resize-none rounded border border-accent bg-surface px-1.5 py-0.5 text-[14px] leading-relaxed text-ink outline-none ${
-              block.type === "toggle" ? "font-medium" : ""
+            className={`mt-0.5 flex-1 resize-none rounded border border-accent bg-surface px-1.5 py-1 text-[14px] leading-relaxed text-ink outline-none ${
+              isToggle ? "font-medium" : ""
             }`}
           />
         ) : (
           <button
             onClick={() => setEditing(true)}
-            className={`mt-0.5 flex-1 whitespace-pre-wrap break-words text-left text-[14px] leading-relaxed ${
-              block.type === "toggle"
-                ? "font-medium text-ink"
-                : block.type === "text"
-                ? "text-ink"
-                : "text-ink"
-            } ${block.text ? "" : "text-ink-tertiary"}`}
+            className={`mt-0.5 min-h-[28px] flex-1 whitespace-pre-wrap break-words px-1.5 py-1 text-left text-[14px] leading-relaxed ${
+              isToggle ? "font-medium" : ""
+            } ${block.text ? "text-ink" : "text-ink-tertiary"}`}
           >
             {block.text || "入力…"}
           </button>
         )}
 
-        {/* 操作ボタン (ホバーで表示) */}
+        {/* ホバー時の操作 */}
         {!editing && (
-          <div className="ml-1 mt-0.5 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
+          <div className="ml-0.5 mt-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
             <button
-              onClick={() => onChangeAll(moveBlock(blocks, block.id, -1))}
+              onClick={() => apply(moveBlock(blocks, block.id, -1))}
               aria-label="上へ"
               className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink"
             >
               <Icon name="up" size={11} />
             </button>
             <button
-              onClick={() => onChangeAll(moveBlock(blocks, block.id, 1))}
+              onClick={() => apply(moveBlock(blocks, block.id, 1))}
               aria-label="下へ"
               className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink"
             >
               <Icon name="down" size={11} />
             </button>
             <button
-              onClick={del}
+              onClick={() => apply(removeBlock(blocks, block.id))}
               aria-label="削除"
               className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-red-50 hover:text-danger"
             >
@@ -235,94 +234,47 @@ function BlockRow({
         )}
       </div>
 
-      {/* 子ブロック (トグルが開いているとき) */}
-      {block.type === "toggle" && !block.collapsed && (
-        <div
-          className="ml-5 border-l border-line pl-1"
-          style={{ marginLeft: depth * 20 + 20 }}
-        >
+      {/* トグルの中身 */}
+      {isToggle && !block.collapsed && (
+        <div className="ml-[30px] border-l border-line pl-1.5">
           {block.children.map((child) => (
-            <BlockRow
-              key={child.id}
-              block={child}
-              depth={0}
-              blocks={blocks}
-              onSave={onSave}
-              onChangeAll={onChangeAll}
-            />
+            <BlockRow key={child.id} block={child} blocks={blocks} apply={apply} />
           ))}
+          {/* 中に行を追加 (常に薄く表示) */}
+          <button
+            onClick={() => apply(addChildBlock(blocks, block.id, newBlock("text")))}
+            className="my-0.5 flex items-center gap-1.5 rounded px-1.5 py-1 text-[12px] text-ink-tertiary/50 hover:bg-canvas hover:text-ink-secondary"
+          >
+            <Icon name="plus" size={12} /> 行を追加
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-// ---- 公開コンポーネント ----
+/** 公開コンポーネント */
 export function BlockEditor({
   blocks,
   onChange,
-  onSave,
 }: {
   blocks: Block[];
-  onChange: (b: Block[]) => void;
-  onSave: (b: Block[]) => void;
+  onChange: (next: Block[]) => void;
 }) {
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showMenu) return;
-    const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setShowMenu(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [showMenu]);
-
-  const addRoot = (type: BlockType) => {
-    setShowMenu(false);
-    const nb = newBlock(type);
-    const next = [...blocks, nb];
-    onChange(next);
-  };
-
   return (
-    <div className="space-y-0.5 py-1">
+    <div className="py-1">
       {blocks.map((block) => (
-        <BlockRow
-          key={block.id}
-          block={block}
-          depth={0}
-          blocks={blocks}
-          onSave={onSave}
-          onChangeAll={(next) => { onChange(next); onSave(next); }}
-        />
+        <BlockRow key={block.id} block={block} blocks={blocks} apply={onChange} />
       ))}
 
-      {/* 末尾の追加ボタン */}
-      <div className="relative pt-1" ref={menuRef}>
-        <button
-          onClick={() => setShowMenu((v) => !v)}
-          className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] text-ink-tertiary hover:bg-canvas hover:text-ink-secondary"
-        >
-          <Icon name="plus" size={14} />
-          ブロックを追加
-        </button>
-        {showMenu && (
-          <div className="absolute left-0 top-8 z-50 overflow-hidden rounded-xl border border-line bg-surface shadow-modal">
-            {BLOCK_TYPES.map((bt) => (
-              <button
-                key={bt.type}
-                onClick={() => addRoot(bt.type)}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-[14px] text-ink hover:bg-canvas"
-              >
-                <Icon name={bt.icon} size={15} className="text-ink-secondary" />
-                {bt.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* 末尾: クリックで新しい行 (Notion の空白部分クリックの感覚) */}
+      <button
+        onClick={() => onChange([...blocks, newBlock("text")])}
+        className="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-ink-tertiary/50 hover:bg-canvas hover:text-ink-secondary"
+      >
+        <Icon name="plus" size={13} />
+        {blocks.length === 0 ? "タップして入力を始める" : "行を追加"}
+      </button>
     </div>
   );
 }
