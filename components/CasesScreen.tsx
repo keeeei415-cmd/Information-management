@@ -165,11 +165,8 @@ export const CasesScreen = forwardRef<CasesScreenHandle>((_, ref) => {
       <div className="space-y-2 px-3 pt-1">
         {sections.length === 0 && !addingGroup && (
           <div className="flex flex-col items-center gap-3 py-20 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-line bg-surface text-ink-tertiary">
-              <Icon name="plus" size={24} />
-            </div>
             <p className="text-[15px] font-medium text-ink-secondary">
-              {searching ? "一致する症例がありません" : "右上のボタンから症例を追加しましょう"}
+              {searching ? "一致する症例がありません" : "グループを作成して症例を整理しましょう"}
             </p>
           </div>
         )}
