@@ -65,7 +65,6 @@ export function KnowledgeBoard({
   const remainingParts = BODY_PARTS.filter((p) => !usedParts.has(p));
 
   const addPart = async (name: string) => {
-    setAdding(false);
     await addCard({ tab_id: tabId, title: name, metadata: { outline: [] } });
   };
 
