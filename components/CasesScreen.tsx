@@ -7,6 +7,7 @@ import { DEFAULT_FILTER } from "@/lib/types";
 import { collectTags } from "@/lib/utils";
 import { CardEditor } from "./CardEditor";
 import { Icon } from "./Icon";
+import { Modal } from "./Modal";
 import { Toolbar } from "./Toolbar";
 
 const UNGROUPED = "未分類";
@@ -28,7 +29,6 @@ export const CasesScreen = forwardRef<CasesScreenHandle>((_, ref) => {
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [creating, setCreating]       = useState(false);
   const [addingGroup, setAddingGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
 
   // 症例タブID（「知識」以外の最初のタブ）
   const casesTabId = useMemo(
@@ -100,9 +100,7 @@ export const CasesScreen = forwardRef<CasesScreenHandle>((_, ref) => {
       return next;
     });
 
-  const addGroup = async () => {
-    const name = newGroupName.trim();
-    setNewGroupName("");
+  const addGroup = async (name: string) => {
     setAddingGroup(false);
     if (!name || groups.includes(name) || name === UNGROUPED || !casesTabId) return;
     const nextGroups = [...storedGroups, name];
@@ -139,26 +137,14 @@ export const CasesScreen = forwardRef<CasesScreenHandle>((_, ref) => {
         />
       </div>
 
-      {/* グループ追加入力 */}
+      {/* グループ追加モーダル */}
       {addingGroup && (
-        <div className="mx-3 mb-3 flex items-center gap-2 rounded-card border border-line bg-surface p-2.5">
-          <input
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void addGroup()}
-            autoFocus
-            placeholder="グループ名 (例: 頚部)"
-            className="h-10 flex-1 rounded-xl border border-accent bg-canvas px-3 text-[15px] text-ink outline-none"
-          />
-          <button onClick={() => void addGroup()} disabled={!newGroupName.trim()}
-            className="h-10 rounded-xl bg-accent px-4 text-[14px] font-semibold text-white disabled:opacity-40">
-            追加
-          </button>
-          <button onClick={() => { setAddingGroup(false); setNewGroupName(""); }}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-line text-ink-tertiary">
-            <Icon name="close" size={16} />
-          </button>
-        </div>
+        <GroupNameModal
+          title="グループを追加"
+          placeholder="例: 頚部"
+          onClose={() => setAddingGroup(false)}
+          onSave={(name) => void addGroup(name)}
+        />
       )}
 
       {/* グループセクション */}
@@ -245,3 +231,47 @@ export const CasesScreen = forwardRef<CasesScreenHandle>((_, ref) => {
   );
 });
 CasesScreen.displayName = "CasesScreen";
+
+// ---- グループ名入力モーダル ----
+function GroupNameModal({
+  title,
+  placeholder,
+  onClose,
+  onSave,
+}: {
+  title: string;
+  placeholder: string;
+  onClose: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      footer={
+        <div className="flex gap-2">
+          <button onClick={onClose}
+            className="h-11 flex-1 rounded-xl border border-line text-[15px] font-medium text-ink-secondary">
+            キャンセル
+          </button>
+          <button
+            disabled={!name.trim()}
+            onClick={() => { if (name.trim()) onSave(name.trim()); }}
+            className="h-11 flex-1 rounded-xl bg-accent text-[15px] font-semibold text-white disabled:opacity-40">
+            追加
+          </button>
+        </div>
+      }
+    >
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && name.trim() && onSave(name.trim())}
+        placeholder={placeholder}
+        autoFocus
+        className="w-full rounded-xl border border-line bg-canvas px-3 py-3 text-[16px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
+      />
+    </Modal>
+  );
+}

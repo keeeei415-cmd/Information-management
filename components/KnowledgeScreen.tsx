@@ -125,9 +125,28 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     setOpenKeys((prev) => new Set(prev).add(name));
   };
 
+  /** モーダルから直接名前を受け取るバージョン */
+  const addGroup_modal = async (name: string) => {
+    setAddingGroup(false);
+    if (!name || allGroupDefs.some((g) => g.name === name)) return;
+    const next = [...groupDefs, { name, subs: [] }];
+    await saveGroupDefs(next);
+    setOpenKeys((prev) => new Set(prev).add(name));
+  };
+
   const addSub = async (groupName: string) => {
     const sub = newSubName.trim();
     setNewSubName(""); setAddingSubFor(null);
+    if (!sub) return;
+    const next = allGroupDefs.map((g) =>
+      g.name === groupName ? { ...g, subs: g.subs.includes(sub) ? g.subs : [...g.subs, sub] } : g
+    );
+    await saveGroupDefs(next);
+    setOpenKeys((prev) => new Set(prev).add(`${groupName}/${sub}`));
+  };
+
+  const addSub_modal = async (groupName: string, sub: string) => {
+    setAddingSubFor(null);
     if (!sub) return;
     const next = allGroupDefs.map((g) =>
       g.name === groupName ? { ...g, subs: g.subs.includes(sub) ? g.subs : [...g.subs, sub] } : g
@@ -225,26 +244,14 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
         </div>
       </div>
 
-      {/* グループ追加入力 */}
+      {/* グループ追加モーダル */}
       {addingGroup && (
-        <div className="mx-3 mb-2 flex items-center gap-2 rounded-card border border-line bg-surface p-2.5">
-          <input
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void addGroup()}
-            autoFocus
-            placeholder="グループ名 (例: 頚部)"
-            className="h-10 flex-1 rounded-xl border border-accent bg-canvas px-3 text-[15px] text-ink outline-none"
-          />
-          <button onClick={() => void addGroup()} disabled={!newGroupName.trim()}
-            className="h-10 rounded-xl bg-accent px-4 text-[14px] font-semibold text-white disabled:opacity-40">
-            追加
-          </button>
-          <button onClick={() => { setAddingGroup(false); setNewGroupName(""); }}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-line text-ink-tertiary">
-            <Icon name="close" size={16} />
-          </button>
-        </div>
+        <GroupNameModal
+          title="グループを追加"
+          placeholder="例: 頚部"
+          onClose={() => { setAddingGroup(false); setNewGroupName(""); }}
+          onSave={(name) => { setNewGroupName(name); void addGroup_modal(name); }}
+        />
       )}
 
       {/* グループセクション */}
@@ -293,26 +300,14 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
               {isGroupOpen && (
                 <div className="border-t border-line bg-canvas/50 p-2">
 
-                  {/* サブグループ追加入力 */}
+                  {/* サブグループ追加モーダル */}
                   {addingSubFor === gKey && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-xl border border-accent/30 bg-surface p-2">
-                      <input
-                        value={newSubName}
-                        onChange={(e) => setNewSubName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && void addSub(gKey)}
-                        autoFocus
-                        placeholder="サブグループ名"
-                        className="h-9 flex-1 rounded-lg border border-accent bg-canvas px-2.5 text-[14px] text-ink outline-none"
-                      />
-                      <button onClick={() => void addSub(gKey)} disabled={!newSubName.trim()}
-                        className="h-9 rounded-lg bg-accent px-3 text-[13px] font-semibold text-white disabled:opacity-40">
-                        追加
-                      </button>
-                      <button onClick={() => { setAddingSubFor(null); setNewSubName(""); }}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-ink-tertiary">
-                        <Icon name="close" size={14} />
-                      </button>
-                    </div>
+                    <GroupNameModal
+                      title={`「${gKey}」にサブグループを追加`}
+                      placeholder="例: 寝違え"
+                      onClose={() => { setAddingSubFor(null); setNewSubName(""); }}
+                      onSave={(name) => { setNewSubName(name); void addSub_modal(gKey, name); }}
+                    />
                   )}
 
                   {/* サブグループ一覧 */}
@@ -573,6 +568,50 @@ function KnowledgeCardEditor({
             className="w-full resize-y rounded-xl border border-line bg-canvas px-3 py-2.5 text-[15px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent" />
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// ---- グループ名入力モーダル（グループ追加・サブグループ追加で共用）----
+function GroupNameModal({
+  title,
+  placeholder,
+  onClose,
+  onSave,
+}: {
+  title: string;
+  placeholder: string;
+  onClose: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      footer={
+        <div className="flex gap-2">
+          <button onClick={onClose}
+            className="h-11 flex-1 rounded-xl border border-line text-[15px] font-medium text-ink-secondary">
+            キャンセル
+          </button>
+          <button
+            disabled={!name.trim()}
+            onClick={() => { if (name.trim()) onSave(name.trim()); }}
+            className="h-11 flex-1 rounded-xl bg-accent text-[15px] font-semibold text-white disabled:opacity-40">
+            追加
+          </button>
+        </div>
+      }
+    >
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && name.trim() && onSave(name.trim())}
+        placeholder={placeholder}
+        autoFocus
+        className="w-full rounded-xl border border-line bg-canvas px-3 py-3 text-[16px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
+      />
     </Modal>
   );
 }
