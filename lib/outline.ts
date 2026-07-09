@@ -7,24 +7,26 @@
  *   "heading" | "image" | "link" | "checklist" | "divider" | ...
  */
 
-export type BlockType = "bullet" | "toggle" | "text";
+export type BlockType = "text" | "bullet" | "toggle" | "todo" | "divider";
 
 export interface Block {
   id: string;
   type: BlockType;
   text: string;
   collapsed: boolean;      // toggle 専用
+  checked?: boolean;       // todo 専用
   children: Block[];       // toggle の中に入れ子
 }
 
 // ---- ファクトリ ----
 
-export function newBlock(type: BlockType = "bullet"): Block {
+export function newBlock(type: BlockType = "text"): Block {
   return {
     id: `b_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     type,
     text: "",
     collapsed: false,
+    checked: false,
     children: [],
   };
 }
@@ -115,5 +117,10 @@ export function blocksMatch(blocks: Block[], q: string): boolean {
 export function pruneEmpty(blocks: Block[]): Block[] {
   return blocks
     .map((b) => ({ ...b, children: pruneEmpty(b.children) }))
-    .filter((b) => b.text.trim() !== "" || b.children.length > 0);
+    .filter(
+      (b) =>
+        b.type === "divider" ||       // 区切り線はテキストを持たないので常に残す
+        b.text.trim() !== "" ||
+        b.children.length > 0
+    );
 }

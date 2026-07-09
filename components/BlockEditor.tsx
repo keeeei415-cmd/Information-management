@@ -3,18 +3,14 @@
 /**
  * Notion 風ブロックエディタ。
  *
- * ＋ボタンの意味:
- *   「その行を何にするか」を選ぶ = 行の種類変換 (テキスト/箇条書き/トグル)
- *   Notion の "/" コマンドに近い。行の追加ではない。
+ * ＋ボタン = 「この行を何にするか」を選ぶ (行の種類変換)。行の追加ではない。
+ * Enter    = 下に新しい行を追加。
+ * Backspace(空行) / ゴミ箱 = 行を削除し、上の行の末尾にカーソルを戻す。
  *
- * 行の追加:
- *   Enter で下に新しい行が増える。
- *
- * 削除:
- *   空行で Backspace → 行が消えて、上の行の末尾にカーソルが移動する。
+ * 種類を増やすときは BlockType (lib/outline.ts) と TYPE_MENU に足すだけでよい。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addChildBlock,
   insertAfter,
@@ -27,41 +23,64 @@ import {
 } from "@/lib/outline";
 import { Icon } from "./Icon";
 
-/** ＋メニュー: この行を何にするか (今後ここに項目を足していく) */
+/** ＋メニュー: この行を何に変換するか */
 const TYPE_MENU: { type: BlockType; icon: string; label: string }[] = [
-  { type: "text",   icon: "edit",         label: "テキスト" },
-  { type: "bullet", icon: "dot",          label: "箇条書き" },
-  { type: "toggle", icon: "chevronRight", label: "トグル" },
+  { type: "text",    icon: "edit",         label: "テキスト" },
+  { type: "bullet",  icon: "dot",          label: "箇条書き" },
+  { type: "todo",    icon: "square",       label: "チェックボックス" },
+  { type: "toggle",  icon: "chevronRight", label: "トグル" },
+  { type: "divider", icon: "minus",        label: "区切り線" },
 ];
 
-/** ＋ボタン + 種類メニュー */
+/** ＋ボタン + 種類メニュー (画面に固定配置して見切れを防ぐ) */
 function TypeMenu({
   current,
   onPick,
   onPickChild,
 }: {
   current: BlockType;
-  /** この行の種類を変える */
   onPick: (t: BlockType) => void;
-  /** トグル行のとき、中に新しいブロックを追加する */
   onPickChild?: (t: BlockType) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const btnRef  = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // ボタン位置を基準にメニュー位置を決める (画面外に出ないよう調整)
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const MENU_W = 200;
+    const MENU_H = onPickChild ? 460 : 250;
+    let top  = r.top;
+    let left = r.right + 6;
+    if (left + MENU_W > window.innerWidth)  left = Math.max(8, r.left - MENU_W - 6);
+    if (top + MENU_H > window.innerHeight)  top  = Math.max(8, window.innerHeight - MENU_H - 8);
+    setPos({ top, left });
+  }, [open, onPickChild]);
 
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      if (!menuRef.current?.contains(e.target as Node) && !btnRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+      }
     };
+    const onScroll = () => setOpen(false);
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", onScroll, true);
+    };
   }, [open]);
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
-        onMouseDown={(e) => e.preventDefault()} // textarea の blur を防ぐ
+        ref={btnRef}
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => setOpen((v) => !v)}
         aria-label="この行の種類を変更"
         className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-tertiary/35 transition-colors hover:bg-canvas hover:text-ink-secondary"
@@ -70,10 +89,12 @@ function TypeMenu({
       </button>
 
       {open && (
-        <div className="absolute left-7 top-0 z-50 min-w-[180px] overflow-hidden rounded-xl border border-line bg-surface shadow-modal">
-          <p className="border-b border-line px-3.5 py-1.5 text-[11px] font-medium text-ink-tertiary">
-            この行を変換
-          </p>
+        <div
+          ref={menuRef}
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-[100] max-h-[70vh] w-[200px] overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-modal"
+        >
+          <p className="px-3.5 py-1.5 text-[11px] font-medium text-ink-tertiary">この行を変換</p>
           {TYPE_MENU.map((m) => (
             <button
               key={m.type}
@@ -91,7 +112,7 @@ function TypeMenu({
 
           {onPickChild && (
             <>
-              <p className="border-t border-line px-3.5 py-1.5 text-[11px] font-medium text-ink-tertiary">
+              <p className="mt-1 border-t border-line px-3.5 pb-1.5 pt-2 text-[11px] font-medium text-ink-tertiary">
                 この中に追加
               </p>
               {TYPE_MENU.map((m) => (
@@ -109,7 +130,7 @@ function TypeMenu({
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -124,20 +145,22 @@ function BlockRow({
   block: Block;
   blocks: Block[];
   apply: (next: Block[]) => void;
-  /** フォーカスすべきブロックの id */
   focusId: string | null;
   setFocusId: (id: string | null) => void;
 }) {
   const shouldFocus = focusId === block.id;
-  const [editing, setEditing] = useState(block.text === "" || shouldFocus);
+  const isDivider = block.type === "divider";
+  const isToggle  = block.type === "toggle";
+  const isTodo    = block.type === "todo";
+
+  const [editing, setEditing] = useState(!isDivider && (block.text === "" || shouldFocus));
   const textRef  = useRef(block.text);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
 
-  // 外部からフォーカス指示が来たら編集モードに入る
   useEffect(() => {
-    if (shouldFocus) setEditing(true);
-  }, [shouldFocus]);
+    if (shouldFocus && !isDivider) setEditing(true);
+  }, [shouldFocus, isDivider]);
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -145,14 +168,13 @@ function BlockRow({
       el.focus();
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
-      el.setSelectionRange(el.value.length, el.value.length); // 末尾にカーソル
+      el.setSelectionRange(el.value.length, el.value.length);
       if (shouldFocus) setFocusId(null);
     }
   }, [editing, shouldFocus, setFocusId]);
 
-  /** この行より前にある「最後の行」の id を返す (削除後のフォーカス移動先) */
+  /** 表示順で1つ前のブロック id (削除後のフォーカス移動先) */
   const findPrevId = (): string | null => {
-    // 平坦化して順序どおりの id 配列を作る
     const flat: string[] = [];
     const walk = (list: Block[]) => {
       list.forEach((b) => {
@@ -165,6 +187,13 @@ function BlockRow({
     return idx > 0 ? flat[idx - 1] : null;
   };
 
+  const deleteAndFocusPrev = () => {
+    const prevId = findPrevId();
+    setEditing(false);
+    apply(removeBlock(blocks, block.id));
+    if (prevId) setFocusId(prevId);
+  };
+
   const commit = () => {
     const text = textRef.current.trim();
     setEditing(false);
@@ -175,15 +204,31 @@ function BlockRow({
     apply(updateBlock(blocks, block.id, { text: textRef.current }));
   };
 
-  /** 行を削除して、上の行の末尾にカーソルを移す */
-  const deleteAndFocusPrev = () => {
-    const prevId = findPrevId();
-    setEditing(false);
-    apply(removeBlock(blocks, block.id));
-    if (prevId) setFocusId(prevId);
-  };
-
-  const isToggle = block.type === "toggle";
+  // ---- 区切り線は専用描画 ----
+  if (isDivider) {
+    return (
+      <div className="group/row flex items-center gap-0.5">
+        <TypeMenu current={block.type} onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))} />
+        <div className="flex-1 py-2.5">
+          <div className="h-px w-full bg-line" />
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
+          <button onClick={() => apply(moveBlock(blocks, block.id, -1))} aria-label="上へ"
+            className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink">
+            <Icon name="up" size={11} />
+          </button>
+          <button onClick={() => apply(moveBlock(blocks, block.id, 1))} aria-label="下へ"
+            className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink">
+            <Icon name="down" size={11} />
+          </button>
+          <button onClick={deleteAndFocusPrev} aria-label="削除"
+            className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-red-50 hover:text-danger">
+            <Icon name="trash" size={11} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -191,10 +236,7 @@ function BlockRow({
         {/* ＋ = この行の種類を変換 */}
         <TypeMenu
           current={block.type}
-          onPick={(t) => {
-            // トグル→他 に変える時、子があるなら残す
-            apply(updateBlock(blocks, block.id, { type: t }));
-          }}
+          onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
           onPickChild={isToggle ? (t) => apply(addChildBlock(blocks, block.id, newBlock(t))) : undefined}
         />
 
@@ -206,6 +248,18 @@ function BlockRow({
             className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-secondary hover:bg-canvas"
           >
             <Icon name={block.collapsed ? "chevronRight" : "chevronDown"} size={15} strokeWidth={2.4} />
+          </button>
+        ) : isTodo ? (
+          <button
+            onClick={() => apply(updateBlock(blocks, block.id, { checked: !block.checked }))}
+            aria-label={block.checked ? "未完了に戻す" : "完了にする"}
+            className={`mt-1 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border transition-colors ${
+              block.checked
+                ? "border-success bg-success text-white"
+                : "border-ink-tertiary text-transparent hover:border-success"
+            }`}
+          >
+            <Icon name="check" size={11} strokeWidth={3} />
           </button>
         ) : block.type === "bullet" ? (
           <span className="mx-2 mt-[11px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-tertiary" />
@@ -228,31 +282,26 @@ function BlockRow({
             }}
             onBlur={commit}
             onKeyDown={(e) => {
-              // IME 変換確定の Enter は無視
               if (e.key === "Enter" && (composingRef.current || e.nativeEvent.isComposing)) return;
 
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 const t = textRef.current;
-
-                // 空行で Enter → 増やさない
                 if (!t.trim()) {
                   if (block.children.length === 0) deleteAndFocusPrev();
                   return;
                 }
-
                 setEditing(false);
                 const nb = newBlock(isToggle ? "text" : block.type);
                 let next = updateBlock(blocks, block.id, isToggle ? { text: t, collapsed: false } : { text: t });
                 next = isToggle
-                  ? addChildBlock(next, block.id, nb)   // トグル → 中に行
-                  : insertAfter(next, block.id, nb);    // 通常   → 下に行
+                  ? addChildBlock(next, block.id, nb)
+                  : insertAfter(next, block.id, nb);
                 apply(next);
-                setFocusId(nb.id); // 新しい行にカーソルを移す
+                setFocusId(nb.id);
                 return;
               }
 
-              // 空行で Backspace → 削除して上の行の末尾へ
               if (e.key === "Backspace" && !textRef.current && block.children.length === 0) {
                 e.preventDefault();
                 deleteAndFocusPrev();
@@ -270,7 +319,9 @@ function BlockRow({
             onClick={() => setEditing(true)}
             className={`mt-0.5 min-h-[28px] flex-1 whitespace-pre-wrap break-words px-1.5 py-1 text-left text-[14px] leading-relaxed ${
               isToggle ? "font-medium" : ""
-            } ${block.text ? "text-ink" : "text-ink-tertiary"}`}
+            } ${
+              isTodo && block.checked ? "text-ink-tertiary line-through" : block.text ? "text-ink" : "text-ink-tertiary"
+            }`}
           >
             {block.text || "入力…"}
           </button>
@@ -279,25 +330,16 @@ function BlockRow({
         {/* ホバー時の操作 */}
         {!editing && (
           <div className="ml-0.5 mt-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
-            <button
-              onClick={() => apply(moveBlock(blocks, block.id, -1))}
-              aria-label="上へ"
-              className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink"
-            >
+            <button onClick={() => apply(moveBlock(blocks, block.id, -1))} aria-label="上へ"
+              className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink">
               <Icon name="up" size={11} />
             </button>
-            <button
-              onClick={() => apply(moveBlock(blocks, block.id, 1))}
-              aria-label="下へ"
-              className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink"
-            >
+            <button onClick={() => apply(moveBlock(blocks, block.id, 1))} aria-label="下へ"
+              className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-canvas hover:text-ink">
               <Icon name="down" size={11} />
             </button>
-            <button
-              onClick={deleteAndFocusPrev}
-              aria-label="削除"
-              className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-red-50 hover:text-danger"
-            >
+            <button onClick={deleteAndFocusPrev} aria-label="削除"
+              className="flex h-5 w-5 items-center justify-center rounded text-ink-tertiary hover:bg-red-50 hover:text-danger">
               <Icon name="trash" size={11} />
             </button>
           </div>
@@ -320,7 +362,7 @@ function BlockRow({
           <button
             onClick={() => {
               const last = block.children[block.children.length - 1];
-              if (last && !last.text.trim() && last.children.length === 0) return;
+              if (last && !last.text.trim() && last.children.length === 0 && last.type !== "divider") return;
               const nb = newBlock("text");
               apply(addChildBlock(blocks, block.id, nb));
               setFocusId(nb.id);
@@ -347,7 +389,7 @@ export function BlockEditor({
 
   const addRow = () => {
     const last = blocks[blocks.length - 1];
-    if (last && !last.text.trim() && last.children.length === 0) return;
+    if (last && !last.text.trim() && last.children.length === 0 && last.type !== "divider") return;
     const nb = newBlock("text");
     onChange([...blocks, nb]);
     setFocusId(nb.id);
