@@ -295,7 +295,7 @@ function BlockRow({
       onDragEnd={() => drag.end()}
       onMouseDown={(e) => e.preventDefault()}
       aria-label="ドラッグして移動"
-      className="mt-[3px] flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary/25 transition-colors hover:bg-canvas hover:text-ink-secondary active:cursor-grabbing"
+      className="mt-[3px] flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary/50 transition-colors hover:bg-canvas hover:text-ink-secondary active:cursor-grabbing"
     >
       <Icon name="grip" size={14} strokeWidth={2.6} />
     </button>

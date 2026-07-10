@@ -22,7 +22,10 @@ function Home() {
       {/* ヘッダー */}
       <header className="sticky top-0 z-30 border-b border-line bg-canvas">
         <div className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
-          <h1 className="text-[20px] font-bold tracking-tight text-ink">知識</h1>
+          <h1 className="text-[20px] font-bold tracking-tight text-ink">
+            知識
+            <span className="ml-2 align-middle text-[10px] font-normal text-ink-tertiary">v2</span>
+          </h1>
           <div className="flex items-center gap-2">
             <button
               onClick={() => knowledgeRef.current?.openAddGroup()}
