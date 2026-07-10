@@ -268,18 +268,11 @@ function BlockRow({
   };
 
   const commit = (text: string) => {
-    if (!text.trim() && block.children.length === 0 && !isDivider) {
-      apply(removeBlock(blocks, block.id));
-      return;
-    }
     apply(updateBlock(blocks, block.id, { text }));
   };
 
   const handleEnter = (text: string) => {
-    if (!text.trim()) {
-      if (block.children.length === 0) deleteAndFocusPrev();
-      return;
-    }
+    // 空行でも改行して新しい行を作れる
     const nb = newBlock(isToggle ? "text" : block.type);
     let next = updateBlock(blocks, block.id, isToggle ? { text, collapsed: false } : { text });
     next = isToggle ? addChildBlock(next, block.id, nb) : insertAfter(next, block.id, nb);
@@ -334,28 +327,30 @@ function BlockRow({
 
         {!block.collapsed && (
           <div className="rounded-b-lg border-t border-line bg-surface px-1.5 py-1">
-            {block.children.map((child) => (
-              <BlockRow
-                key={child.id}
-                block={child}
-                blocks={blocks}
-                apply={apply}
-                focusId={focusId}
-                setFocusId={setFocusId}
-              />
-            ))}
-            <button
-              onClick={() => {
-                const last = block.children[block.children.length - 1];
-                if (last && !last.text.trim() && last.children.length === 0 && last.type !== "divider") return;
-                const nb = newBlock("text");
-                apply(addChildBlock(blocks, block.id, nb));
-                setFocusId(nb.id);
-              }}
-              className="my-0.5 flex items-center gap-1.5 rounded px-1.5 py-1 text-[12px] text-ink-tertiary/45 hover:bg-canvas hover:text-ink-secondary"
-            >
-              <Icon name="plus" size={12} /> 行を追加
-            </button>
+            {block.children.length === 0 ? (
+              // 中身が空のときは、クリックで最初の行を作れるようにする
+              <button
+                onClick={() => {
+                  const nb = newBlock("text");
+                  apply(addChildBlock(blocks, block.id, nb));
+                  setFocusId(nb.id);
+                }}
+                className="w-full px-2 py-2 text-left text-[13px] text-ink-tertiary/45 hover:text-ink-secondary"
+              >
+                ここに入力
+              </button>
+            ) : (
+              block.children.map((child) => (
+                <BlockRow
+                  key={child.id}
+                  block={child}
+                  blocks={blocks}
+                  apply={apply}
+                  focusId={focusId}
+                  setFocusId={setFocusId}
+                />
+              ))
+            )}
           </div>
         )}
       </div>
@@ -412,13 +407,23 @@ export function BlockEditor({
 }) {
   const [focusId, setFocusId] = useState<string | null>(null);
 
-  const addRow = () => {
-    const last = blocks[blocks.length - 1];
-    if (last && !last.text.trim() && last.children.length === 0 && last.type !== "divider") return;
-    const nb = newBlock("text");
-    onChange([...blocks, nb]);
-    setFocusId(nb.id);
-  };
+  // 空のときは最初の1行を作れるようにする
+  if (blocks.length === 0) {
+    return (
+      <div className="py-1">
+        <button
+          onClick={() => {
+            const nb = newBlock("text");
+            onChange([nb]);
+            setFocusId(nb.id);
+          }}
+          className="w-full px-2 py-3 text-left text-[13px] text-ink-tertiary/45 hover:text-ink-secondary"
+        >
+          ここに入力を始める
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="py-1">
@@ -432,14 +437,6 @@ export function BlockEditor({
           setFocusId={setFocusId}
         />
       ))}
-
-      <button
-        onClick={addRow}
-        className="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-[13px] text-ink-tertiary/45 hover:bg-canvas hover:text-ink-secondary"
-      >
-        <Icon name="plus" size={13} />
-        {blocks.length === 0 ? "ここに入力を始める" : "行を追加"}
-      </button>
     </div>
   );
 }

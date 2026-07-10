@@ -11,7 +11,7 @@
  */
 
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
-import { blocksMatch, newBlock, pruneEmpty, readBlocks, type Block } from "@/lib/outline";
+import { blocksMatch, newBlock, readBlocks, type Block } from "@/lib/outline";
 import { GROUP_COLORS, GROUP_COLOR_KEYS, getGroupColor, type GroupColor } from "@/lib/groupColors";
 import { useApp } from "@/lib/store";
 import { type Card } from "@/lib/types";
@@ -73,14 +73,6 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
   }, [allCards]);
 
   const toggleGroup = (name: string) => {
-    const willClose = openGroups.has(name);
-    if (willClose) {
-      const card = contentCardMap.get(name);
-      if (card) {
-        const cleaned = pruneEmpty(readBlocks(card.metadata));
-        void patchCard(card.id, { metadata: { blocks: cleaned } });
-      }
-    }
     setOpenGroups((prev) => {
       const next = new Set(prev);
       next.has(name) ? next.delete(name) : next.add(name);
