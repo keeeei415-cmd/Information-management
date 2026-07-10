@@ -109,6 +109,70 @@ export function blocksMatch(blocks: Block[], q: string): boolean {
   return walk(blocks);
 }
 
+/** id のブロックを (子ごと) 取り出す。見つからなければ null */
+export function findBlock(blocks: Block[], id: string): Block | null {
+  for (const b of blocks) {
+    if (b.id === id) return b;
+    const found = findBlock(b.children, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** ある id が別の id の子孫かどうか (自分の中に自分を落とすのを防ぐ) */
+export function isDescendant(blocks: Block[], ancestorId: string, targetId: string): boolean {
+  const ancestor = findBlock(blocks, ancestorId);
+  if (!ancestor) return false;
+  const walk = (list: Block[]): boolean =>
+    list.some((b) => b.id === targetId || walk(b.children));
+  return walk(ancestor.children);
+}
+
+/**
+ * ドラッグ&ドロップ用の並べ替え。
+ * dragId のブロックを targetId の直前 (before) または直後 (after) に移動する。
+ * targetId が dragId の子孫の場合は何もしない。
+ */
+export function moveBlockTo(
+  blocks: Block[],
+  dragId: string,
+  targetId: string,
+  position: "before" | "after" | "inside"
+): Block[] {
+  if (dragId === targetId) return blocks;
+  if (isDescendant(blocks, dragId, targetId)) return blocks;
+
+  const dragged = findBlock(blocks, dragId);
+  if (!dragged) return blocks;
+
+  // まず抜き取る
+  const without = removeBlock(blocks, dragId);
+
+  // 挿入する
+  const insert = (list: Block[]): Block[] => {
+    const out: Block[] = [];
+    for (const b of list) {
+      if (b.id === targetId) {
+        if (position === "before") {
+          out.push(dragged, { ...b, children: insert(b.children) });
+          continue;
+        }
+        if (position === "after") {
+          out.push({ ...b, children: insert(b.children) }, dragged);
+          continue;
+        }
+        // inside: トグルの子として末尾に追加
+        out.push({ ...b, collapsed: false, children: [...insert(b.children), dragged] });
+        continue;
+      }
+      out.push(b.children.length ? { ...b, children: insert(b.children) } : b);
+    }
+    return out;
+  };
+
+  return insert(without);
+}
+
 /**
  * 空のブロックを取り除く。
  * ただし子を持つトグルは、中身があるので残す。

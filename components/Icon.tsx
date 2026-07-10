@@ -27,6 +27,7 @@ const PATHS: Record<string, string> = {
   minus: "M5 12h14",
   triangleRight: "M9 5l8 7-8 7z",
   triangleDown: "M5 9l7 8 7-8z",
+  grip: "M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01",
 };
 
 export function Icon({

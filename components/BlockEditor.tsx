@@ -11,10 +11,11 @@
  *   再描画で中身がズレる問題を防ぐ。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from "react";
 import {
   addChildBlock,
   insertAfter,
+  moveBlockTo,
   newBlock,
   removeBlock,
   updateBlock,
@@ -30,6 +31,19 @@ const TYPE_MENU: { type: BlockType; icon: string; label: string }[] = [
   { type: "toggle",  icon: "chevronRight", label: "トグル" },
   { type: "divider", icon: "minus",        label: "区切り線" },
 ];
+
+// ---------------- ドラッグ状態 ----------------
+
+type DropPos = "before" | "after" | "inside";
+
+interface DragCtx {
+  dragId: string | null;
+  overId: string | null;
+  position: DropPos;
+  start: (id: string) => void;
+  setOver: (id: string | null, pos: DropPos) => void;
+  end: () => void;
+}
 
 // ---------------- ＋メニュー ----------------
 
@@ -230,16 +244,68 @@ function BlockRow({
   apply,
   focusId,
   setFocusId,
+  drag,
 }: {
   block: Block;
   blocks: Block[];
   apply: (next: Block[]) => void;
   focusId: string | null;
   setFocusId: (id: string | null) => void;
+  drag: DragCtx;
 }) {
   const isDivider = block.type === "divider";
   const isToggle  = block.type === "toggle";
   const isTodo    = block.type === "todo";
+
+  const isDragging = drag.dragId === block.id;
+  const dropHint   = drag.overId === block.id ? drag.position : null;
+
+  /** この行をドロップ先として登録するハンドラ群 */
+  const dropProps = {
+    onDragOver: (e: DragEvent<HTMLDivElement>) => {
+      if (!drag.dragId || drag.dragId === block.id) return;
+      e.preventDefault();
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const ratio = (e.clientY - r.top) / r.height;
+      // トグルは中央にドロップで「中に入れる」
+      let pos: DropPos = ratio < 0.5 ? "before" : "after";
+      if (isToggle && ratio > 0.3 && ratio < 0.7) pos = "inside";
+      drag.setOver(block.id, pos);
+    },
+    onDragLeave: () => drag.setOver(null, "before"),
+    onDrop: (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (drag.dragId && drag.overId) {
+        apply(moveBlockTo(blocks, drag.dragId, drag.overId, drag.position));
+      }
+      drag.end();
+    },
+  };
+
+  /** ドラッグハンドル (＋の左) */
+  const handle = (
+    <button
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", block.id);
+        drag.start(block.id);
+      }}
+      onDragEnd={() => drag.end()}
+      onMouseDown={(e) => e.preventDefault()}
+      aria-label="ドラッグして移動"
+      className="mt-[3px] flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary/25 transition-colors hover:bg-canvas hover:text-ink-secondary active:cursor-grabbing"
+    >
+      <Icon name="grip" size={14} strokeWidth={2.6} />
+    </button>
+  );
+
+  /** ドロップ位置のガイド線 */
+  const guide = (where: "before" | "after") =>
+    dropHint === where ? (
+      <div className="pointer-events-none h-0.5 rounded-full bg-accent" />
+    ) : null;
 
   /** 表示順で1つ前のブロック id */
   const findPrevId = (): string | null => {
@@ -262,8 +328,10 @@ function BlockRow({
   };
 
   const handleEnter = () => {
-    // トグルは「同じ階層の下に新しいトグル」を追加する
+    // 同じ階層の下に、同じ種類の行を追加する
     const nb = newBlock(block.type);
+    // トグルは閉じた状態で作る (勝手に展開しない)
+    if (nb.type === "toggle") nb.collapsed = true;
     apply(insertAfter(blocks, block.id, nb));
     setFocusId(nb.id);
   };
@@ -271,15 +339,20 @@ function BlockRow({
   // ---- 区切り線 ----
   if (isDivider) {
     return (
-      <div className="flex items-center gap-0.5">
-        <TypeMenu
-          current={block.type}
-          onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
-          onDelete={deleteAndFocusPrev}
-        />
-        <div className="flex-1 py-2.5">
-          <div className="h-px w-full bg-line" />
+      <div className={isDragging ? "opacity-40" : ""}>
+        {guide("before")}
+        <div className="flex items-center gap-0.5" {...dropProps}>
+          {handle}
+          <TypeMenu
+            current={block.type}
+            onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
+            onDelete={deleteAndFocusPrev}
+          />
+          <div className="flex-1 py-2.5">
+            <div className="h-px w-full bg-line" />
+          </div>
         </div>
+        {guide("after")}
       </div>
     );
   }
@@ -287,8 +360,15 @@ function BlockRow({
   // ---- トグル ----
   if (isToggle) {
     return (
-      <div className="my-1 rounded-lg border border-line">
-        <div className="flex items-start gap-0.5 rounded-t-lg bg-canvas/60 px-1.5 py-1">
+      <div className={isDragging ? "opacity-40" : ""}>
+        {guide("before")}
+        <div
+          className={`my-1 rounded-lg border ${
+            dropHint === "inside" ? "border-accent bg-accent-soft/40" : "border-line"
+          }`}
+        >
+        <div className="flex items-start gap-0.5 rounded-t-lg bg-canvas/60 px-1.5 py-1" {...dropProps}>
+          {handle}
           <TypeMenu
             current={block.type}
             onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
@@ -341,23 +421,29 @@ function BlockRow({
                   apply={apply}
                   focusId={focusId}
                   setFocusId={setFocusId}
+                  drag={drag}
                 />
               ))
             )}
           </div>
         )}
+        </div>
+        {guide("after")}
       </div>
     );
   }
 
   // ---- 通常行 ----
   return (
-    <div className="flex items-start gap-0.5">
-      <TypeMenu
-        current={block.type}
-        onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
-        onDelete={deleteAndFocusPrev}
-      />
+    <div className={isDragging ? "opacity-40" : ""}>
+      {guide("before")}
+      <div className="flex items-start gap-0.5" {...dropProps}>
+        {handle}
+        <TypeMenu
+          current={block.type}
+          onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
+          onDelete={deleteAndFocusPrev}
+        />
 
       {isTodo ? (
         <button
@@ -378,16 +464,18 @@ function BlockRow({
         <span className="w-1 shrink-0" />
       )}
 
-      <BlockTextarea
-        value={block.text}
-        placeholder=""
-        strike={isTodo && block.checked}
-        autoFocus={focusId === block.id}
-        onFocused={() => setFocusId(null)}
-        onChangeText={(text) => apply(updateBlock(blocks, block.id, { text }))}
-        onEnter={handleEnter}
-        onBackspaceEmpty={deleteAndFocusPrev}
-      />
+        <BlockTextarea
+          value={block.text}
+          placeholder=""
+          strike={isTodo && block.checked}
+          autoFocus={focusId === block.id}
+          onFocused={() => setFocusId(null)}
+          onChangeText={(text) => apply(updateBlock(blocks, block.id, { text }))}
+          onEnter={handleEnter}
+          onBackspaceEmpty={deleteAndFocusPrev}
+        />
+      </div>
+      {guide("after")}
     </div>
   );
 }
@@ -439,6 +527,20 @@ export function BlockEditor({
     };
   }, []);
 
+  // ---- ドラッグ状態 ----
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [position, setPosition] = useState<DropPos>("before");
+
+  const drag: DragCtx = {
+    dragId,
+    overId,
+    position,
+    start: (id) => setDragId(id),
+    setOver: (id, pos) => { setOverId(id); setPosition(pos); },
+    end: () => { setDragId(null); setOverId(null); },
+  };
+
   if (blocks.length === 0) {
     return (
       <div className="py-1">
@@ -457,7 +559,7 @@ export function BlockEditor({
   }
 
   return (
-    <div className="py-1">
+    <div className="py-1" onDragEnd={() => drag.end()}>
       {blocks.map((block) => (
         <BlockRow
           key={block.id}
@@ -466,6 +568,7 @@ export function BlockEditor({
           apply={apply}
           focusId={focusId}
           setFocusId={setFocusId}
+          drag={drag}
         />
       ))}
     </div>
