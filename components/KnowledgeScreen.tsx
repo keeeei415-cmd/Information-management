@@ -202,40 +202,48 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
           return (
             <section
               key={g.name}
-              className="rounded-card border shadow-card"
-              style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+              className="overflow-hidden rounded-card border-[1.5px] shadow-card"
+              style={{ borderColor: palette.border, backgroundColor: "#FFFFFF" }}
             >
-              {/* グループヘッダー */}
-              <div className="flex items-center gap-2 px-2.5 py-2.5">
+              {/* グループヘッダー (ここだけ色を塗る) */}
+              <div
+                className="flex items-center gap-2 px-2.5 py-2.5"
+                style={{ backgroundColor: palette.bg }}
+              >
                 <button
                   onClick={() => toggleGroup(g.name)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-secondary hover:bg-black/5"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg hover:bg-black/5"
+                  style={{ color: palette.text }}
                   aria-label={isOpen ? "折りたたむ" : "展開"}
                 >
                   <Icon name={isOpen ? "chevronDown" : "chevronRight"} size={18} strokeWidth={2.4} />
                 </button>
                 <button onClick={() => toggleGroup(g.name)} className="flex-1 text-left">
-                  <span className="text-[16px] font-semibold text-ink">{g.name}</span>
+                  <span className="text-[16px] font-semibold" style={{ color: palette.text }}>
+                    {g.name}
+                  </span>
                 </button>
                 <button
                   onClick={() => setEditingGroup(g)}
                   aria-label="グループを編集"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-tertiary hover:bg-black/5 hover:text-accent"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg opacity-55 hover:bg-black/5 hover:opacity-100"
+                  style={{ color: palette.text }}
                 >
                   <Icon name="edit" size={15} />
                 </button>
                 <button
                   onClick={() => void removeGroup(g.name)}
                   aria-label="グループを削除"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-tertiary hover:bg-red-50 hover:text-danger"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg opacity-55 hover:bg-red-50 hover:text-danger hover:opacity-100"
+                  style={{ color: palette.text }}
                 >
                   <Icon name="trash" size={15} />
                 </button>
               </div>
 
-              {/* ブロックエディタ */}
+              {/* ブロックエディタ (中身は白) */}
               {isOpen && (
-                <div className="border-t px-3 py-2" style={{ borderColor: palette.border }}>
+                <div className="border-t bg-surface px-3 py-2" style={{ borderColor: palette.border }}>
                   {card ? (
                     <BlockEditor
                       blocks={blocks}
@@ -356,12 +364,17 @@ function GroupModal({
           </div>
           {/* プレビュー */}
           <div
-            className="mt-3 rounded-card border px-3 py-2.5"
-            style={{ backgroundColor: GROUP_COLORS[color].bg, borderColor: GROUP_COLORS[color].border }}
+            className="mt-3 overflow-hidden rounded-card border-[1.5px]"
+            style={{ borderColor: GROUP_COLORS[color].border }}
           >
-            <span className="text-[15px] font-semibold text-ink">
-              {name.trim() || "プレビュー"}
-            </span>
+            <div className="px-3 py-2.5" style={{ backgroundColor: GROUP_COLORS[color].bg }}>
+              <span className="text-[15px] font-semibold" style={{ color: GROUP_COLORS[color].text }}>
+                {name.trim() || "プレビュー"}
+              </span>
+            </div>
+            <div className="bg-surface px-3 py-2 text-[13px] text-ink-tertiary">
+              中身は白のまま
+            </div>
           </div>
         </div>
       </div>
