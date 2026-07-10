@@ -262,11 +262,9 @@ function BlockRow({
   };
 
   const handleEnter = () => {
-    const nb = newBlock(isToggle ? "text" : block.type);
-    const next = isToggle
-      ? addChildBlock(updateBlock(blocks, block.id, { collapsed: false }), block.id, nb)
-      : insertAfter(blocks, block.id, nb);
-    apply(next);
+    // トグルは「同じ階層の下に新しいトグル」を追加する
+    const nb = newBlock(block.type);
+    apply(insertAfter(blocks, block.id, nb));
     setFocusId(nb.id);
   };
 
