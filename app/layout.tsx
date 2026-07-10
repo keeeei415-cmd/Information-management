@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "症例記録",
-  description: "治療内容を記録・検索できる症例記録アプリ",
+  title: "知識ノート",
+  description: "知識をNotion風に整理できるノートアプリ",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "症例記録",
+    title: "知識ノート",
   },
 };
 

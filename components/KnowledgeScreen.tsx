@@ -1,18 +1,18 @@
 "use client";
 
 /**
- * 知識タブ画面。
- * グループ（頸部・肩など）= 折りたたみセクション
- * グループ内 = Notion 風ブロックエディタ（箇条書き・トグル・テキスト）
+ * 知識画面。
+ * グループ（頸部・肩など）= 折りたたみセクション（色を選べる）
+ * グループ内 = Notion 風ブロックエディタ
  *
  * データ構造:
  * - グループ定義カード: title == GROUPS_CARD_TITLE, metadata.groups = GroupDef[]
  * - コンテンツカード: title = グループ名, metadata.blocks = Block[]
- *   ※グループ1つにつき1枚のカードがブロックを持つ
  */
 
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { blocksMatch, newBlock, pruneEmpty, readBlocks, type Block } from "@/lib/outline";
+import { GROUP_COLORS, GROUP_COLOR_KEYS, getGroupColor, type GroupColor } from "@/lib/groupColors";
 import { useApp } from "@/lib/store";
 import { type Card } from "@/lib/types";
 import { BlockEditor } from "./BlockEditor";
@@ -21,28 +21,31 @@ import { Modal } from "./Modal";
 
 const GROUPS_CARD_TITLE = "__knowledge_groups__";
 
-interface GroupDef { name: string }
+interface GroupDef {
+  name: string;
+  color?: GroupColor;
+}
 
 export interface KnowledgeScreenHandle {
   openAddGroup: () => void;
-  openAddCard:  () => void; // ここでは「ブロックを追加」に代わり使わないが互換用
+  openAddCard:  () => void;
 }
 
 export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
   const { cards, addCard, patchCard, tabs } = useApp();
 
-  const [query,       setQuery]       = useState("");
-  const [openGroups,  setOpenGroups]  = useState<Set<string>>(new Set());
-  const [addingGroup, setAddingGroup] = useState(false);
-  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [query,        setQuery]        = useState("");
+  const [openGroups,   setOpenGroups]   = useState<Set<string>>(new Set());
+  const [addingGroup,  setAddingGroup]  = useState(false);
+  const [editingGroup, setEditingGroup] = useState<GroupDef | null>(null);
 
   useImperativeHandle(ref, () => ({
     openAddGroup: () => setAddingGroup(true),
-    openAddCard:  () => setAddingGroup(true), // 知識タブでは＋＝グループ追加
+    openAddCard:  () => setAddingGroup(true),
   }));
 
   const knowledgeTabId = useMemo(
-    () => tabs.find((t) => t.name === "知識")?.id ?? null,
+    () => tabs.find((t) => t.name === "知識")?.id ?? tabs[0]?.id ?? null,
     [tabs]
   );
 
@@ -51,7 +54,6 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     [cards, knowledgeTabId]
   );
 
-  // グループ定義カード
   const groupsCard = useMemo(
     () => allCards.find((c) => c.title === GROUPS_CARD_TITLE) ?? null,
     [allCards]
@@ -62,7 +64,6 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     return Array.isArray(raw) ? raw : [];
   }, [groupsCard]);
 
-  // グループ名 → コンテンツカード の対応
   const contentCardMap = useMemo(() => {
     const map = new Map<string, Card>();
     allCards.forEach((c) => {
@@ -73,7 +74,6 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
 
   const toggleGroup = (name: string) => {
     const willClose = openGroups.has(name);
-    // 閉じるときに空行を掃除する
     if (willClose) {
       const card = contentCardMap.get(name);
       if (card) {
@@ -98,13 +98,11 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     }
   };
 
-  const addGroup = async (name: string) => {
+  const addGroup = async (name: string, color: GroupColor) => {
     setAddingGroup(false);
     const trimmed = name.trim();
     if (!trimmed || groupDefs.some((g) => g.name === trimmed)) return;
-    const next = [...groupDefs, { name: trimmed }];
-    await saveGroupDefs(next);
-    // コンテンツカードを作成（空のブロックリスト）
+    await saveGroupDefs([...groupDefs, { name: trimmed, color }]);
     if (knowledgeTabId) {
       await addCard({
         tab_id: knowledgeTabId,
@@ -115,56 +113,51 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
     setOpenGroups((prev) => new Set(prev).add(trimmed));
   };
 
-  /** グループ名を変更する (定義とコンテンツカードのタイトル両方を更新) */
-  const renameGroup = async (oldName: string, newName: string) => {
-    setRenamingGroup(null);
+  /** グループ名と色を更新 */
+  const updateGroup = async (oldName: string, newName: string, color: GroupColor) => {
+    setEditingGroup(null);
     const trimmed = newName.trim();
-    if (!trimmed || trimmed === oldName) return;
-    if (groupDefs.some((g) => g.name === trimmed)) {
+    if (!trimmed) return;
+    if (trimmed !== oldName && groupDefs.some((g) => g.name === trimmed)) {
       window.alert(`「${trimmed}」は既に存在します`);
       return;
     }
-    // 1. グループ定義を更新
-    await saveGroupDefs(groupDefs.map((g) => (g.name === oldName ? { name: trimmed } : g)));
-    // 2. コンテンツカードのタイトルを更新
-    const card = contentCardMap.get(oldName);
-    if (card) await patchCard(card.id, { title: trimmed });
-    // 3. 開閉状態を引き継ぐ
-    setOpenGroups((prev) => {
-      const next = new Set(prev);
-      if (next.delete(oldName)) next.add(trimmed);
-      return next;
-    });
+    await saveGroupDefs(
+      groupDefs.map((g) => (g.name === oldName ? { name: trimmed, color } : g))
+    );
+    if (trimmed !== oldName) {
+      const card = contentCardMap.get(oldName);
+      if (card) await patchCard(card.id, { title: trimmed });
+      setOpenGroups((prev) => {
+        const next = new Set(prev);
+        if (next.delete(oldName)) next.add(trimmed);
+        return next;
+      });
+    }
   };
 
   const removeGroup = async (name: string) => {
     if (!window.confirm(`グループ「${name}」とその内容を削除しますか?`)) return;
     await saveGroupDefs(groupDefs.filter((g) => g.name !== name));
     const card = contentCardMap.get(name);
-    // カードは削除せずブロックを空にする（データ保持）
     if (card) await patchCard(card.id, { metadata: { blocks: [] } });
   };
 
-  /** グループのブロックを保存する */
   const saveBlocks = (groupName: string, blocks: Block[]) => {
     const card = contentCardMap.get(groupName);
-    if (!card || !knowledgeTabId) return;
+    if (!card) return;
     void patchCard(card.id, { metadata: { blocks } });
   };
 
   const searching = query.trim().length > 0;
   const q = query.trim().toLowerCase();
 
-  // 検索: ブロック内テキストにヒットするグループのみ表示
   const visibleGroups = useMemo(() => {
     if (!searching) return groupDefs;
     return groupDefs.filter((g) => {
       const card = contentCardMap.get(g.name);
       const blocks = card ? readBlocks(card.metadata) : [];
-      return (
-        g.name.toLowerCase().includes(q) ||
-        blocksMatch(blocks, q)
-      );
+      return g.name.toLowerCase().includes(q) || blocksMatch(blocks, q);
     });
   }, [groupDefs, contentCardMap, searching, q]);
 
@@ -201,35 +194,33 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
         )}
 
         {visibleGroups.map((g) => {
-          const card  = contentCardMap.get(g.name);
+          const card   = contentCardMap.get(g.name);
           const blocks = card ? readBlocks(card.metadata) : [];
           const isOpen = searching || openGroups.has(g.name);
+          const palette = GROUP_COLORS[getGroupColor(g.color)];
 
           return (
             <section
               key={g.name}
-              className="rounded-card border border-line bg-surface shadow-card"
+              className="rounded-card border shadow-card"
+              style={{ backgroundColor: palette.bg, borderColor: palette.border }}
             >
               {/* グループヘッダー */}
               <div className="flex items-center gap-2 px-2.5 py-2.5">
                 <button
                   onClick={() => toggleGroup(g.name)}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-secondary hover:bg-canvas"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-secondary hover:bg-black/5"
                   aria-label={isOpen ? "折りたたむ" : "展開"}
                 >
-                  <Icon
-                    name={isOpen ? "chevronDown" : "chevronRight"}
-                    size={18}
-                    strokeWidth={2.4}
-                  />
+                  <Icon name={isOpen ? "chevronDown" : "chevronRight"} size={18} strokeWidth={2.4} />
                 </button>
                 <button onClick={() => toggleGroup(g.name)} className="flex-1 text-left">
                   <span className="text-[16px] font-semibold text-ink">{g.name}</span>
                 </button>
                 <button
-                  onClick={() => setRenamingGroup(g.name)}
-                  aria-label="グループ名を編集"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-tertiary hover:bg-canvas hover:text-accent"
+                  onClick={() => setEditingGroup(g)}
+                  aria-label="グループを編集"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-tertiary hover:bg-black/5 hover:text-accent"
                 >
                   <Icon name="edit" size={15} />
                 </button>
@@ -244,16 +235,14 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
 
               {/* ブロックエディタ */}
               {isOpen && (
-                <div className="border-t border-line px-3 py-2">
+                <div className="border-t px-3 py-2" style={{ borderColor: palette.border }}>
                   {card ? (
                     <BlockEditor
                       blocks={blocks}
                       onChange={(next) => saveBlocks(g.name, next)}
                     />
                   ) : (
-                    <p className="py-4 text-center text-[13px] text-ink-tertiary">
-                      読み込み中…
-                    </p>
+                    <p className="py-4 text-center text-[13px] text-ink-tertiary">読み込み中…</p>
                   )}
                 </div>
               )}
@@ -264,22 +253,23 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
 
       {/* グループ追加モーダル */}
       {addingGroup && (
-        <GroupNameModal
+        <GroupModal
           title="グループを追加"
           confirmLabel="追加"
           onClose={() => setAddingGroup(false)}
-          onSave={(name) => void addGroup(name)}
+          onSave={(name, color) => void addGroup(name, color)}
         />
       )}
 
-      {/* グループ名編集モーダル */}
-      {renamingGroup && (
-        <GroupNameModal
-          title="グループ名を編集"
+      {/* グループ編集モーダル */}
+      {editingGroup && (
+        <GroupModal
+          title="グループを編集"
           confirmLabel="保存"
-          initialValue={renamingGroup}
-          onClose={() => setRenamingGroup(null)}
-          onSave={(name) => void renameGroup(renamingGroup, name)}
+          initialName={editingGroup.name}
+          initialColor={getGroupColor(editingGroup.color)}
+          onClose={() => setEditingGroup(null)}
+          onSave={(name, color) => void updateGroup(editingGroup.name, name, color)}
         />
       )}
     </div>
@@ -287,21 +277,24 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
 });
 KnowledgeScreen.displayName = "KnowledgeScreen";
 
-// ---- グループ名入力モーダル (追加・編集で共用) ----
-function GroupNameModal({
+// ---- グループ名 + 色 入力モーダル ----
+function GroupModal({
   title,
   confirmLabel,
-  initialValue = "",
+  initialName = "",
+  initialColor = "none",
   onClose,
   onSave,
 }: {
   title: string;
   confirmLabel: string;
-  initialValue?: string;
+  initialName?: string;
+  initialColor?: GroupColor;
   onClose: () => void;
-  onSave: (name: string) => void;
+  onSave: (name: string, color: GroupColor) => void;
 }) {
-  const [name, setName] = useState(initialValue);
+  const [name, setName]   = useState(initialName);
+  const [color, setColor] = useState<GroupColor>(initialColor);
   const canSave = name.trim().length > 0;
 
   return (
@@ -310,30 +303,68 @@ function GroupNameModal({
       onClose={onClose}
       footer={
         <div className="flex gap-2">
-          <button
-            onClick={onClose}
-            className="h-11 flex-1 rounded-xl border border-line text-[15px] font-medium text-ink-secondary"
-          >
+          <button onClick={onClose}
+            className="h-11 flex-1 rounded-xl border border-line text-[15px] font-medium text-ink-secondary">
             キャンセル
           </button>
           <button
             disabled={!canSave}
-            onClick={() => { if (canSave) onSave(name.trim()); }}
-            className="h-11 flex-1 rounded-xl bg-accent text-[15px] font-semibold text-white disabled:opacity-40"
-          >
+            onClick={() => { if (canSave) onSave(name.trim(), color); }}
+            className="h-11 flex-1 rounded-xl bg-accent text-[15px] font-semibold text-white disabled:opacity-40">
             {confirmLabel}
           </button>
         </div>
       }
     >
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && canSave && onSave(name.trim())}
-        placeholder="例: 頸部"
-        autoFocus
-        className="w-full rounded-xl border border-line bg-canvas px-3 py-3 text-[16px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
-      />
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium text-ink-secondary">グループ名</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && canSave && onSave(name.trim(), color)}
+            placeholder="例: 頸部"
+            autoFocus
+            className="w-full rounded-xl border border-line bg-canvas px-3 py-3 text-[16px] text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-[13px] font-medium text-ink-secondary">色</label>
+          <div className="flex flex-wrap gap-2.5">
+            {GROUP_COLOR_KEYS.map((key) => {
+              const c = GROUP_COLORS[key];
+              const selected = color === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setColor(key)}
+                  aria-label={c.label}
+                  title={c.label}
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-transform ${
+                    selected ? "scale-110 border-accent" : "border-line hover:scale-105"
+                  }`}
+                  style={{ backgroundColor: c.bg }}
+                >
+                  <span
+                    className="h-4 w-4 rounded-full"
+                    style={{ backgroundColor: key === "none" ? "transparent" : c.dot, border: key === "none" ? "1.5px dashed #C7C7CC" : "none" }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+          {/* プレビュー */}
+          <div
+            className="mt-3 rounded-card border px-3 py-2.5"
+            style={{ backgroundColor: GROUP_COLORS[color].bg, borderColor: GROUP_COLORS[color].border }}
+          >
+            <span className="text-[15px] font-semibold text-ink">
+              {name.trim() || "プレビュー"}
+            </span>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }

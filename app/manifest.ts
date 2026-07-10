@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 /** PWA マニフェスト。ホーム画面追加でスタンドアロン起動できる */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "症例記録",
-    short_name: "症例記録",
-    description: "治療内容を記録・検索できる症例記録アプリ",
+    name: "知識ノート",
+    short_name: "知識ノート",
+    description: "知識をNotion風に整理できるノートアプリ",
     start_url: "/",
     display: "standalone",
     background_color: "#F2F2F7",
