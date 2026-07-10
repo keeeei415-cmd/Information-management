@@ -238,6 +238,7 @@ export const KnowledgeScreen = forwardRef<KnowledgeScreenHandle>((_, ref) => {
                 <div className="border-t bg-surface px-3 py-2" style={{ borderColor: palette.border }}>
                   {card ? (
                     <BlockEditor
+                      key={card.id}
                       blocks={blocks}
                       onChange={(next) => saveBlocks(g.name, next)}
                     />

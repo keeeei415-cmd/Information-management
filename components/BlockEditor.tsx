@@ -3,16 +3,15 @@
 /**
  * Notion / Word 風ブロックエディタ。
  *
- * 書き味の方針:
- * - すべての行が常に入力可能 (クリックせずそのまま書ける)
- * - Enter で下に行が増える / 空行で Backspace で上の行末尾に戻る
- * - 右端の移動・削除ボタンは置かない (Word のように文章として書ける)
- * - ＋ボタン = この行を何にするか (箇条書き・トグル・チェック・区切り線)
- *
- * 種類を増やすときは lib/outline.ts の BlockType と TYPE_MENU に足すだけ。
+ * 設計方針 (挙動の安定化):
+ * - ブロックツリーは「このコンポーネントが持つローカル state」を唯一の真実とする。
+ *   入力・改行・トグル開閉はすべて即座にローカル state に反映され、画面が巻き戻らない。
+ * - 保存 (onChange) はデバウンスして裏で走らせる。保存完了を待たないので操作が引っかからない。
+ * - textarea は完全な制御コンポーネント (value + onChange) にして、
+ *   再描画で中身がズレる問題を防ぐ。
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addChildBlock,
   insertAfter,
@@ -32,7 +31,8 @@ const TYPE_MENU: { type: BlockType; icon: string; label: string }[] = [
   { type: "divider", icon: "minus",        label: "区切り線" },
 ];
 
-/** ＋ボタン + 種類メニュー (画面固定で見切れ防止) */
+// ---------------- ＋メニュー ----------------
+
 function TypeMenu({
   current,
   onPick,
@@ -146,14 +146,16 @@ function TypeMenu({
   );
 }
 
-/** 常時入力可能なテキスト欄 (Word のような書き味) */
-function LiveTextarea({
+// ---------------- 制御されたテキスト欄 ----------------
+
+function BlockTextarea({
   value,
   placeholder,
   bold,
   strike,
   autoFocus,
-  onCommit,
+  onFocused,
+  onChangeText,
   onEnter,
   onBackspaceEmpty,
 }: {
@@ -162,62 +164,53 @@ function LiveTextarea({
   bold?: boolean;
   strike?: boolean;
   autoFocus?: boolean;
-  onCommit: (text: string) => void;
-  onEnter: (text: string) => void;
+  onFocused?: () => void;
+  onChangeText: (text: string) => void;
+  onEnter: () => void;
   onBackspaceEmpty: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const textRef = useRef(value);
   const composingRef = useRef(false);
+  const onFocusedRef = useRef(onFocused);
+  onFocusedRef.current = onFocused;
 
-  // 高さを内容にあわせる
-  const resize = (el: HTMLTextAreaElement) => {
+  // 高さを内容に合わせる
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  };
+  }, [value]);
 
-  useEffect(() => {
-    if (ref.current) resize(ref.current);
-  }, []);
-
+  // 指定された行にカーソルを入れ、指示を消化する
   useEffect(() => {
     if (autoFocus && ref.current) {
-      ref.current.focus();
-      const len = ref.current.value.length;
-      ref.current.setSelectionRange(len, len);
+      const el = ref.current;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+      onFocusedRef.current?.();
     }
   }, [autoFocus]);
-
-  // 外部から値が変わったら反映 (別グループを開いた時など)
-  useEffect(() => {
-    if (ref.current && document.activeElement !== ref.current) {
-      ref.current.value = value;
-      textRef.current = value;
-      resize(ref.current);
-    }
-  }, [value]);
 
   return (
     <textarea
       ref={ref}
-      defaultValue={value}
+      value={value}
       rows={1}
       placeholder={placeholder}
       onCompositionStart={() => { composingRef.current = true; }}
       onCompositionEnd={() => { composingRef.current = false; }}
-      onChange={(e) => {
-        textRef.current = e.target.value;
-        resize(e.target);
-      }}
-      onBlur={() => onCommit(textRef.current)}
+      onChange={(e) => onChangeText(e.target.value)}
       onKeyDown={(e) => {
+        // 日本語変換確定の Enter は無視
         if (e.key === "Enter" && (composingRef.current || e.nativeEvent.isComposing)) return;
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          onEnter(textRef.current);
+          onEnter();
           return;
         }
-        if (e.key === "Backspace" && !textRef.current) {
+        if (e.key === "Backspace" && value === "") {
           e.preventDefault();
           onBackspaceEmpty();
         }
@@ -229,7 +222,8 @@ function LiveTextarea({
   );
 }
 
-/** 1行 (再帰) */
+// ---------------- 1行 (再帰) ----------------
+
 function BlockRow({
   block,
   blocks,
@@ -264,18 +258,14 @@ function BlockRow({
   const deleteAndFocusPrev = () => {
     const prevId = findPrevId();
     apply(removeBlock(blocks, block.id));
-    if (prevId) setFocusId(prevId);
+    setFocusId(prevId);
   };
 
-  const commit = (text: string) => {
-    apply(updateBlock(blocks, block.id, { text }));
-  };
-
-  const handleEnter = (text: string) => {
-    // 空行でも改行して新しい行を作れる
+  const handleEnter = () => {
     const nb = newBlock(isToggle ? "text" : block.type);
-    let next = updateBlock(blocks, block.id, isToggle ? { text, collapsed: false } : { text });
-    next = isToggle ? addChildBlock(next, block.id, nb) : insertAfter(next, block.id, nb);
+    const next = isToggle
+      ? addChildBlock(updateBlock(blocks, block.id, { collapsed: false }), block.id, nb)
+      : insertAfter(blocks, block.id, nb);
     apply(next);
     setFocusId(nb.id);
   };
@@ -296,7 +286,7 @@ function BlockRow({
     );
   }
 
-  // ---- トグル (枠で囲う) ----
+  // ---- トグル ----
   if (isToggle) {
     return (
       <div className="my-1 rounded-lg border border-line">
@@ -304,22 +294,28 @@ function BlockRow({
           <TypeMenu
             current={block.type}
             onPick={(t) => apply(updateBlock(blocks, block.id, { type: t }))}
-            onPickChild={(t) => apply(addChildBlock(blocks, block.id, newBlock(t)))}
+            onPickChild={(t) => {
+              const nb = newBlock(t);
+              apply(addChildBlock(updateBlock(blocks, block.id, { collapsed: false }), block.id, nb));
+              setFocusId(nb.id);
+            }}
             onDelete={deleteAndFocusPrev}
           />
           <button
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => apply(updateBlock(blocks, block.id, { collapsed: !block.collapsed }))}
             aria-label={block.collapsed ? "展開" : "折りたたむ"}
             className="mt-[7px] flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink hover:bg-line/60"
           >
             <Icon name={block.collapsed ? "triangleRight" : "triangleDown"} size={11} filled />
           </button>
-          <LiveTextarea
+          <BlockTextarea
             value={block.text}
             placeholder="トグルのタイトル"
             bold
             autoFocus={focusId === block.id}
-            onCommit={commit}
+            onFocused={() => setFocusId(null)}
+            onChangeText={(text) => apply(updateBlock(blocks, block.id, { text }))}
             onEnter={handleEnter}
             onBackspaceEmpty={() => { if (block.children.length === 0) deleteAndFocusPrev(); }}
           />
@@ -328,7 +324,6 @@ function BlockRow({
         {!block.collapsed && (
           <div className="rounded-b-lg border-t border-line bg-surface px-1.5 py-1">
             {block.children.length === 0 ? (
-              // 中身が空のときは、クリックで最初の行を作れるようにする
               <button
                 onClick={() => {
                   const nb = newBlock("text");
@@ -357,7 +352,7 @@ function BlockRow({
     );
   }
 
-  // ---- 通常行 (テキスト / 箇条書き / チェック) ----
+  // ---- 通常行 ----
   return (
     <div className="flex items-start gap-0.5">
       <TypeMenu
@@ -368,6 +363,7 @@ function BlockRow({
 
       {isTodo ? (
         <button
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => apply(updateBlock(blocks, block.id, { checked: !block.checked }))}
           aria-label={block.checked ? "未完了に戻す" : "完了にする"}
           className={`mt-[7px] flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border transition-colors ${
@@ -384,12 +380,13 @@ function BlockRow({
         <span className="w-1 shrink-0" />
       )}
 
-      <LiveTextarea
+      <BlockTextarea
         value={block.text}
         placeholder=""
         strike={isTodo && block.checked}
         autoFocus={focusId === block.id}
-        onCommit={commit}
+        onFocused={() => setFocusId(null)}
+        onChangeText={(text) => apply(updateBlock(blocks, block.id, { text }))}
         onEnter={handleEnter}
         onBackspaceEmpty={deleteAndFocusPrev}
       />
@@ -397,24 +394,60 @@ function BlockRow({
   );
 }
 
-/** 公開コンポーネント */
+// ---------------- 公開コンポーネント ----------------
+
 export function BlockEditor({
-  blocks,
+  blocks: initialBlocks,
   onChange,
 }: {
   blocks: Block[];
   onChange: (next: Block[]) => void;
 }) {
+  /**
+   * ローカル state を唯一の真実とする。
+   * これにより、保存(サーバー往復)の遅延で画面が巻き戻る現象を防ぐ。
+   */
+  // key={card.id} により、グループごとに新しいインスタンスが作られる。
+  // そのため useState の初期値だけで正しく初期化される。
+  const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
   const [focusId, setFocusId] = useState<string | null>(null);
 
-  // 空のときは最初の1行を作れるようにする
+  // 保存はデバウンスして裏で実行 (操作を待たせない)
+  const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRef  = useRef<Block[] | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const apply = useCallback((next: Block[]) => {
+    setBlocks(next);      // 画面は即座に更新
+    pendingRef.current = next;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      if (pendingRef.current) {
+        onChangeRef.current(pendingRef.current);
+        pendingRef.current = null;
+      }
+    }, 400);
+  }, []);
+
+  // アンマウント時 (グループを閉じた時など) に未保存分を確定させる
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (pendingRef.current) {
+        onChangeRef.current(pendingRef.current);
+        pendingRef.current = null;
+      }
+    };
+  }, []);
+
   if (blocks.length === 0) {
     return (
       <div className="py-1">
         <button
           onClick={() => {
             const nb = newBlock("text");
-            onChange([nb]);
+            apply([nb]);
             setFocusId(nb.id);
           }}
           className="w-full px-2 py-3 text-left text-[13px] text-ink-tertiary/45 hover:text-ink-secondary"
@@ -432,7 +465,7 @@ export function BlockEditor({
           key={block.id}
           block={block}
           blocks={blocks}
-          apply={onChange}
+          apply={apply}
           focusId={focusId}
           setFocusId={setFocusId}
         />
