@@ -300,7 +300,9 @@ function BlockRow({
         e.stopPropagation();
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", block.id);
-        drag.start(block.id);
+        // 重要: ここで即 state 更新すると再描画でドラッグ自体がキャンセルされる。
+        // 次のフレームに遅らせることでブラウザのドラッグ開始を確定させる。
+        setTimeout(() => drag.start(block.id), 0);
       }}
       onDragEnd={(e) => {
         e.stopPropagation();
