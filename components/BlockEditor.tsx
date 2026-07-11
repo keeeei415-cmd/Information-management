@@ -168,6 +168,7 @@ function BlockTextarea({
   bold,
   strike,
   autoFocus,
+  dragging,
   onFocused,
   onChangeText,
   onEnter,
@@ -178,6 +179,8 @@ function BlockTextarea({
   bold?: boolean;
   strike?: boolean;
   autoFocus?: boolean;
+  /** ドラッグ中はイベントを奪わないようにする */
+  dragging?: boolean;
   onFocused?: () => void;
   onChangeText: (text: string) => void;
   onEnter: () => void;
@@ -231,7 +234,9 @@ function BlockTextarea({
       }}
       className={`mt-0.5 flex-1 resize-none border-0 bg-transparent px-1 py-1 text-[14px] leading-relaxed text-ink outline-none placeholder:text-ink-tertiary/60 ${
         bold ? "font-semibold" : ""
-      } ${strike ? "text-ink-tertiary line-through" : ""}`}
+      } ${strike ? "text-ink-tertiary line-through" : ""} ${
+        dragging ? "pointer-events-none" : ""
+      }`}
     />
   );
 }
@@ -264,20 +269,24 @@ function BlockRow({
   const dropProps = {
     onDragOver: (e: DragEvent<HTMLDivElement>) => {
       if (!drag.dragId || drag.dragId === block.id) return;
-      e.preventDefault();
+      e.preventDefault();          // これがないと drop が発火しない
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const ratio = (e.clientY - r.top) / r.height;
-      // トグルは中央にドロップで「中に入れる」
       let pos: DropPos = ratio < 0.5 ? "before" : "after";
+      // トグルは中央にドロップすると「中に入れる」
       if (isToggle && ratio > 0.3 && ratio < 0.7) pos = "inside";
-      drag.setOver(block.id, pos);
+      if (drag.overId !== block.id || drag.position !== pos) {
+        drag.setOver(block.id, pos);
+      }
     },
-    onDragLeave: () => drag.setOver(null, "before"),
     onDrop: (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
-      if (drag.dragId && drag.overId) {
-        apply(moveBlockTo(blocks, drag.dragId, drag.overId, drag.position));
+      const dragId = drag.dragId ?? e.dataTransfer.getData("text/plain");
+      if (dragId && dragId !== block.id) {
+        apply(moveBlockTo(blocks, dragId, block.id, drag.position));
       }
       drag.end();
     },
@@ -285,20 +294,26 @@ function BlockRow({
 
   /** ドラッグハンドル (＋の左) */
   const handle = (
-    <button
+    <div
       draggable
       onDragStart={(e) => {
+        e.stopPropagation();
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", block.id);
         drag.start(block.id);
       }}
-      onDragEnd={() => drag.end()}
-      onMouseDown={(e) => e.preventDefault()}
+      onDragEnd={(e) => {
+        e.stopPropagation();
+        drag.end();
+      }}
+      role="button"
+      tabIndex={-1}
       aria-label="ドラッグして移動"
-      className="mt-[3px] flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary/50 transition-colors hover:bg-canvas hover:text-ink-secondary active:cursor-grabbing"
+      title="ドラッグして移動"
+      className="mt-[3px] flex h-6 w-5 shrink-0 cursor-grab select-none items-center justify-center rounded text-ink-tertiary/50 transition-colors hover:bg-canvas hover:text-ink-secondary active:cursor-grabbing"
     >
       <Icon name="grip" size={14} strokeWidth={2.6} />
-    </button>
+    </div>
   );
 
   /** ドロップ位置のガイド線 */
@@ -391,6 +406,7 @@ function BlockRow({
             value={block.text}
             placeholder="トグルのタイトル"
             bold
+            dragging={!!drag.dragId}
             autoFocus={focusId === block.id}
             onFocused={() => setFocusId(null)}
             onChangeText={(text) => apply(updateBlock(blocks, block.id, { text }))}
@@ -468,6 +484,7 @@ function BlockRow({
           value={block.text}
           placeholder=""
           strike={isTodo && block.checked}
+          dragging={!!drag.dragId}
           autoFocus={focusId === block.id}
           onFocused={() => setFocusId(null)}
           onChangeText={(text) => apply(updateBlock(blocks, block.id, { text }))}
